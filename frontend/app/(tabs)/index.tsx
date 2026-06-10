@@ -68,7 +68,7 @@ export default function Dashboard() {
         <View style={styles.header}>
           <View>
             <Text style={styles.hello}>Good day,</Text>
-            <Text style={styles.userName}>{user?.full_name?.split(" ")[0]}</Text>
+            <Text style={styles.userName}>{(user?.full_name || "").split(/[ &]/).filter(Boolean)[0]}</Text>
           </View>
           <View style={styles.avatar} testID="user-avatar">
             <Text style={styles.avatarText}>RP</Text>

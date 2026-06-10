@@ -1,36 +1,42 @@
 # Regal Park Villas — PRD
 
 ## Overview
-Premium turnkey construction-management mobile app (Expo + FastAPI + MongoDB) for managing ₹4 Cr luxury villa projects across the full lifecycle.
+Premium turnkey construction-management mobile app (Expo + FastAPI + MongoDB) for managing ₹4 Cr+ luxury villa projects across the full lifecycle.
 
 ## Stack
-- Frontend: Expo SDK 54, expo-router, expo-image, expo-linear-gradient, Feather icons
-- Backend: FastAPI, Motor (MongoDB async), bcrypt + JWT (HS256, 7-day)
-- Auth: Email/password JWT, role-based for 18 roles
+- Frontend: Expo SDK 54, expo-router, expo-image, expo-image-picker, expo-document-picker, expo-file-system, expo-sharing, Feather icons
+- Backend: FastAPI, Motor (MongoDB async), bcrypt + JWT (HS256, 7-day), reportlab for PDFs
+- Auth: Email/password JWT with **server-side RBAC** for 18 roles
 
-## Implemented Modules (MVP v1)
-1. **Auth** — JWT login with seeded demo accounts for each role
-2. **Dashboard** — Hero villa card, 6 KPIs (active villas, progress, budget used, delayed tasks, pending bills, snags), recent stage activity
-3. **Projects** — Project list w/ progress rings; detail screen w/ Timeline (23 stages, vertical stepper), Team, BOQ
-4. **Site Operations** — Daily Logs (with new report form), Quality Checklist (tap to toggle PASS/FAIL/PENDING), Snags (tap to advance status)
-5. **Module screens** — BOQ & Cost Control, Procurement, Contractor Billing, Team, Approvals, Client Portal (cost-redacted stage view)
-6. **Profile** — Role-aware menu, sign out
+## Implemented Modules (v1.1)
+1. **Auth** — JWT login with seeded demo accounts. JWT_SECRET strictly env-only.
+2. **Dashboard** — Hero villa, project switcher chips, 6 KPIs, recent stage activity. Hidden from CLIENT (403).
+3. **Projects (multi-project)** — 3 villas seeded: Villa Aurelia (46%), Villa Celeste (22%), Villa Meridian (8%). Project selector persisted via AsyncStorage.
+4. **Project detail** — Sticky tabs (Timeline 23-stage stepper / Team / BOQ).
+5. **Site Operations** — Daily Logs (with **photo upload** via expo-image-picker), Quality Checklist (toggle PASS/FAIL/PENDING), Snags (cycle status + **attach photos**).
+6. **Module screens** — BOQ & Cost Control, Procurement, Contractor Billing, Team, Approvals, Documents & Drawings (upload/open/delete), PDF Reports (progress/cost/delay/safety), Client Portal stage view.
+7. **Profile** — Role-aware menu, sign out.
 
-## Seeded sample data — Villa Aurelia (Plot 12, Regal Park)
-- 1 project · 23 stages · 20 BOQ items · 12 materials · 6 contractor bills
-- 9 quality checks · 8 snags · 12 team members · 8 approvals · 5 daily reports
-- Budget ₹4 Cr · Spent ₹1.85 Cr · Progress 46%
+## Server-side RBAC
+- **CLIENT** is blocked (403) from: `/dashboard/summary`, `/boq`, `/materials`, `/billing`.
+- Stage/Quality/Snag mutations gated to specific role groups (ADMIN/PM/SE/QS/SAFETY).
+- Document upload + delete restricted to internal roles.
+- PDF reports endpoint restricted to internal roles.
 
-## Endpoints (under /api)
-`/auth/login`, `/auth/me`, `/auth/users`, `/projects`, `/projects/{id}`, `/dashboard/summary`,
-`/stages`, `/boq`, `/materials`, `/site-reports` (GET/POST), `/billing`, `/quality` (PATCH),
-`/snags` (PATCH), `/team`, `/approvals`, `/stages/{id}` (PATCH)
+## File uploads (base64)
+- `DailySiteReport.photos`, `Snag.photos`, and the `Document` collection store base64 data URIs in MongoDB.
+- Web uses File picker → data URI; native uses expo-image-picker / expo-document-picker → readAsStringAsync (legacy API).
 
-## Design
-Charcoal + Gold/Bronze editorial palette · Playfair-style display + sans body · Card-based, glass-overlay hero · 4 bottom tabs (Dashboard / Projects / Site / Profile)
+## PDF Reports
+Endpoint: `GET /api/reports/{progress|cost|delay|safety}?project_id=...` (internal only)
+Generated with reportlab using brand palette (charcoal+gold). Mobile downloads via expo-file-system + expo-sharing; web opens in new tab.
+
+## Seeded sample data
+- 3 villas · 47 stages · 20 BOQ items · 12 materials · 6 contractor bills · 9 quality checks · 8 snags · 12 team members · 8 approvals · 5 daily reports · 5 documents
+- Primary: Villa Aurelia ₹4 Cr · Spent ₹1.85 Cr · 46%
 
 ## Smart business enhancement
-Client Portal automatically strips internal cost / vendor margin data — enabling owners to be invited into the app for live progress tracking without compromising the developer's margin confidentiality. This is a direct upsell lever: "transparency without exposure."
+**Client Portal cost-redaction enforced server-side**: clients see live progress, stages, photos and approvals but the server returns 403 for all cost/billing/materials endpoints. Developers can confidently invite owners without exposing margins.
 
-## Not yet implemented (future work)
-Photo uploads (base64 endpoint planned), drawings/documents version control, push notifications, refresh tokens, multi-project support beyond Villa Aurelia.
+## Demo credentials
+See `/app/memory/test_credentials.md`. Primary admin: `admin@regalpark.com` / `Admin@123`.
