@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api } from "@/src/lib/api";
+import { api, downloadReportPdf, API_BASE, getToken } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
+import { useProject } from "@/src/lib/project";
+import { pickDocument } from "@/src/lib/uploads";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 const TITLES: Record<string, string> = {
@@ -13,47 +17,121 @@ const TITLES: Record<string, string> = {
   billing: "Contractor Billing",
   team: "Team & Responsibility",
   approvals: "Approvals",
-  client: "Client Portal",
+  documents: "Documents & Drawings",
+  reports: "PDF Reports",
+  client: "Client Portal View",
 };
+
+const REPORT_KINDS = [
+  { kind: "progress", label: "Project Progress Report", desc: "Stage-by-stage progress with planned dates", icon: "trending-up" },
+  { kind: "cost", label: "Cost Report", desc: "Budget vs actual spend by line item", icon: "pie-chart" },
+  { kind: "delay", label: "Delay Report", desc: "Delayed and in-progress stages with reasons", icon: "alert-triangle" },
+  { kind: "safety", label: "Safety & Quality Report", desc: "Daily safety + open quality failures", icon: "shield" },
+];
 
 export default function Module() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { current: project, projects, setCurrent } = useProject();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [project, setProject] = useState<any>(null);
+  const [busyKind, setBusyKind] = useState<string | null>(null);
 
   const title = TITLES[name as string] || "Module";
   const isClient = user?.role === "CLIENT";
 
   useEffect(() => {
+    if (!project) { setLoading(false); return; }
     const fn =
-      name === "boq" ? api.boq :
-      name === "procurement" ? api.materials :
-      name === "billing" ? api.billing :
-      name === "team" ? api.team :
-      name === "approvals" ? api.approvals :
-      name === "client" ? api.stages :
-      api.stages;
-
-    Promise.all([fn(), api.projects()])
-      .then(([data, ps]) => { setRows(data); setProject(ps[0]); })
-      .finally(() => setLoading(false));
-  }, [name]);
+      name === "boq" ? () => api.boq(project.id) :
+      name === "procurement" ? () => api.materials(project.id) :
+      name === "billing" ? () => api.billing(project.id) :
+      name === "team" ? () => api.team(project.id) :
+      name === "approvals" ? () => api.approvals(project.id) :
+      name === "documents" ? () => api.documents(project.id) :
+      name === "reports" ? () => Promise.resolve([]) :
+      name === "client" ? () => api.stages(project.id) :
+      () => api.stages(project.id);
+    setLoading(true);
+    fn().then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
+  }, [name, project]);
 
   const totals = useMemo(() => {
     if (name === "boq") {
-      const budget = rows.reduce((a, r) => a + r.approved_budget_inr, 0);
-      const spent = rows.reduce((a, r) => a + r.actual_spent_inr, 0);
+      const budget = rows.reduce((a, r) => a + (r.approved_budget_inr || 0), 0);
+      const spent = rows.reduce((a, r) => a + (r.actual_spent_inr || 0), 0);
       return { budget, spent };
-    }
-    if (name === "billing") {
-      const total = rows.reduce((a, r) => a + r.net_payable_inr, 0);
-      return { total };
     }
     return null;
   }, [rows, name]);
+
+  const openReport = async (kind: string) => {
+    if (!project) return;
+    setBusyKind(kind);
+    try {
+      if (Platform.OS === "web") {
+        const blob = await downloadReportPdf(kind, project.id);
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+      } else {
+        const tok = await getToken();
+        const fileUri = `${FileSystem.cacheDirectory}rpv-${kind}-${Date.now()}.pdf`;
+        const dl = await FileSystem.downloadAsync(
+          `${API_BASE}/api/reports/${kind}?project_id=${project.id}`,
+          fileUri,
+          { headers: { Authorization: `Bearer ${tok}` } },
+        );
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(dl.uri, { mimeType: "application/pdf" });
+        } else {
+          await Linking.openURL(dl.uri);
+        }
+      }
+    } catch (e) { /* surface as toast in future */ }
+    finally { setBusyKind(null); }
+  };
+
+  const uploadDoc = async () => {
+    if (!project) return;
+    const picked = await pickDocument();
+    if (!picked) return;
+    try {
+      const created = await api.createDocument({
+        project_id: project.id,
+        title: picked.name,
+        category: "OTHER",
+        file_data: picked.dataUri,
+        file_name: picked.name,
+      });
+      setRows([created, ...rows]);
+    } catch {}
+  };
+
+  const openDoc = async (d: any) => {
+    if (Platform.OS === "web") {
+      window.open(d.file_data, "_blank");
+      return;
+    }
+    try {
+      // strip data URI prefix
+      const m = d.file_data.match(/^data:(.+);base64,(.+)$/);
+      if (!m) return;
+      const ext = (m[1].split("/")[1] || "bin").split(";")[0];
+      const fileUri = `${FileSystem.cacheDirectory}${d.file_name || "document"}.${ext}`;
+      await FileSystem.writeAsStringAsync(fileUri, m[2], { encoding: FileSystem.EncodingType.Base64 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, { mimeType: m[1] });
+      }
+    } catch {}
+  };
+
+  const removeDoc = async (id: string) => {
+    try {
+      await api.deleteDocument(id);
+      setRows(rows.filter((r) => r.id !== id));
+    } catch {}
+  };
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
 
@@ -69,25 +147,87 @@ export default function Module() {
         </View>
       </View>
 
-      {/* Summary band */}
+      {projects.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {projects.map((p) => (
+            <Pressable
+              key={p.id}
+              testID={`module-project-chip-${p.id}`}
+              style={[styles.chip, project?.id === p.id && styles.chipActive]}
+              onPress={() => setCurrent(p)}
+            >
+              <Text style={[styles.chipText, project?.id === p.id && styles.chipTextActive]}>{p.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       {name === "boq" && totals && (
         <View style={styles.summary}>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.sumLbl}>BUDGET</Text>
-            <Text style={styles.sumVal}>{formatINR(totals.budget)}</Text>
-          </View>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.sumLbl}>SPENT</Text>
-            <Text style={[styles.sumVal, totals.spent > totals.budget && { color: colors.error }]}>{formatINR(totals.spent)}</Text>
-          </View>
-          <View style={styles.summaryBlock}>
-            <Text style={styles.sumLbl}>USED</Text>
-            <Text style={styles.sumVal}>{Math.round((totals.spent / totals.budget) * 100)}%</Text>
-          </View>
+          <View style={styles.summaryBlock}><Text style={styles.sumLbl}>BUDGET</Text><Text style={styles.sumVal}>{formatINR(totals.budget)}</Text></View>
+          <View style={styles.summaryBlock}><Text style={styles.sumLbl}>SPENT</Text><Text style={[styles.sumVal, totals.spent > totals.budget && { color: colors.error }]}>{formatINR(totals.spent)}</Text></View>
+          <View style={styles.summaryBlock}><Text style={styles.sumLbl}>USED</Text><Text style={styles.sumVal}>{totals.budget ? Math.round((totals.spent / totals.budget) * 100) : 0}%</Text></View>
         </View>
       )}
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
+        {/* PDF Reports module */}
+        {name === "reports" && REPORT_KINDS.map((r) => (
+          <Pressable key={r.kind} testID={`report-${r.kind}`} style={styles.card} onPress={() => openReport(r.kind)} disabled={busyKind !== null}>
+            <View style={styles.reportRow}>
+              <View style={styles.reportIcon}><Feather name={r.icon as any} size={20} color={colors.brand} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemDesc}>{r.label}</Text>
+                <Text style={styles.cardMeta}>{r.desc}</Text>
+              </View>
+              {busyKind === r.kind ? (
+                <ActivityIndicator color={colors.brand} />
+              ) : (
+                <Feather name="download" size={18} color={colors.brand} />
+              )}
+            </View>
+          </Pressable>
+        ))}
+
+        {/* Documents module */}
+        {name === "documents" && (
+          <>
+            {!isClient && (
+              <Pressable testID="upload-document" style={styles.uploadBtn} onPress={uploadDoc}>
+                <Feather name="upload" size={16} color={colors.brandSecondary} />
+                <Text style={styles.uploadTxt}>UPLOAD DRAWING / DOCUMENT</Text>
+              </Pressable>
+            )}
+            {rows.length === 0 && (
+              <Text style={styles.emptyTxt}>No documents yet for this project.</Text>
+            )}
+            {rows.map((d) => (
+              <View key={d.id} style={styles.card} testID={`doc-${d.id}`}>
+                <View style={styles.cardHead}>
+                  <Text style={styles.itemDesc}>{d.title}</Text>
+                  <View style={[styles.statusPill, { borderColor: colors.brand }]}>
+                    <Text style={[styles.statusPillText, { color: colors.brand }]}>{d.revision}</Text>
+                  </View>
+                </View>
+                <Text style={styles.cardMeta}>{d.category}{d.drawing_number ? ` · ${d.drawing_number}` : ""}</Text>
+                <Text style={styles.metaTxt}>By {d.uploaded_by} · {d.uploaded_at?.slice(0, 10)}</Text>
+                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+                  <Pressable testID={`doc-open-${d.id}`} onPress={() => openDoc(d)} style={styles.docBtn}>
+                    <Feather name="external-link" size={12} color={colors.brand} />
+                    <Text style={styles.docBtnTxt}>OPEN</Text>
+                  </Pressable>
+                  {!isClient && (
+                    <Pressable testID={`doc-delete-${d.id}`} onPress={() => removeDoc(d.id)} style={[styles.docBtn, { borderColor: colors.error }]}>
+                      <Feather name="trash-2" size={12} color={colors.error} />
+                      <Text style={[styles.docBtnTxt, { color: colors.error }]}>REMOVE</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
         {/* BOQ */}
         {name === "boq" && rows.map((b) => (
           <View key={b.id} style={styles.card} testID={`boq-${b.id}`}>
@@ -131,30 +271,23 @@ export default function Module() {
         })}
 
         {/* Billing */}
-        {name === "billing" && (
-          isClient ? (
-            <View style={styles.card}>
-              <Text style={styles.itemDesc}>Contractor billing details are restricted.</Text>
-              <Text style={styles.cardMeta}>Please contact your Project Manager for milestone schedules.</Text>
-            </View>
-          ) : rows.map((b) => (
-            <View key={b.id} style={styles.card} testID={`bill-${b.id}`}>
-              <View style={styles.cardHead}>
-                <Text style={styles.itemDesc}>{b.contractor_name}</Text>
-                <View style={[styles.statusPill, { borderColor: statusColor(b.payment_status) }]}>
-                  <Text style={[styles.statusPillText, { color: statusColor(b.payment_status) }]}>{b.payment_status}</Text>
-                </View>
-              </View>
-              <Text style={styles.cardMeta}>{b.work_package} · {b.work_completed_pct}% done</Text>
-              <View style={styles.cardKvs}>
-                <View style={styles.kv}><Text style={styles.kvLbl}>BOQ VALUE</Text><Text style={styles.kvVal}>{formatINR(b.boq_value_inr)}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>RA BILL</Text><Text style={styles.kvVal}>{formatINR(b.ra_bill_amount_inr)}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>RETENTION</Text><Text style={styles.kvVal}>{formatINR(b.retention_inr)}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>NET PAYABLE</Text><Text style={[styles.kvVal, { color: b.net_payable_inr < 0 ? colors.warning : colors.success, fontWeight: "700" }]}>{formatINR(b.net_payable_inr)}</Text></View>
+        {name === "billing" && rows.map((b) => (
+          <View key={b.id} style={styles.card} testID={`bill-${b.id}`}>
+            <View style={styles.cardHead}>
+              <Text style={styles.itemDesc}>{b.contractor_name}</Text>
+              <View style={[styles.statusPill, { borderColor: statusColor(b.payment_status) }]}>
+                <Text style={[styles.statusPillText, { color: statusColor(b.payment_status) }]}>{b.payment_status}</Text>
               </View>
             </View>
-          ))
-        )}
+            <Text style={styles.cardMeta}>{b.work_package} · {b.work_completed_pct}% done</Text>
+            <View style={styles.cardKvs}>
+              <View style={styles.kv}><Text style={styles.kvLbl}>BOQ VALUE</Text><Text style={styles.kvVal}>{formatINR(b.boq_value_inr)}</Text></View>
+              <View style={styles.kv}><Text style={styles.kvLbl}>RA BILL</Text><Text style={styles.kvVal}>{formatINR(b.ra_bill_amount_inr)}</Text></View>
+              <View style={styles.kv}><Text style={styles.kvLbl}>RETENTION</Text><Text style={styles.kvVal}>{formatINR(b.retention_inr)}</Text></View>
+              <View style={styles.kv}><Text style={styles.kvLbl}>NET PAYABLE</Text><Text style={[styles.kvVal, { color: b.net_payable_inr < 0 ? colors.warning : colors.success, fontWeight: "700" }]}>{formatINR(b.net_payable_inr)}</Text></View>
+            </View>
+          </View>
+        ))}
 
         {/* Team */}
         {name === "team" && rows.map((m) => (
@@ -187,7 +320,7 @@ export default function Module() {
           </View>
         ))}
 
-        {/* Client portal: read-only stage view, no costs */}
+        {/* Client portal */}
         {name === "client" && rows.map((s) => (
           <View key={s.id} style={styles.card} testID={`client-stage-${s.id}`}>
             <View style={styles.cardHead}>
@@ -212,6 +345,11 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", marginRight: spacing.sm, backgroundColor: colors.surfaceTertiary },
   title: { fontFamily: font.display, fontSize: 22, color: colors.onSurface },
   sub: { color: colors.muted, fontSize: 12 },
+  chipRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm, flexDirection: "row" },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexShrink: 0 },
+  chipActive: { backgroundColor: colors.surfaceInverse, borderColor: colors.surfaceInverse },
+  chipText: { fontSize: 11, color: colors.muted },
+  chipTextActive: { color: colors.brandSecondary },
 
   summary: { flexDirection: "row", marginHorizontal: spacing.lg, backgroundColor: colors.surfaceInverse, padding: spacing.lg, borderRadius: radii.md, marginBottom: spacing.sm },
   summaryBlock: { flex: 1, alignItems: "center" },
@@ -231,4 +369,14 @@ const styles = StyleSheet.create({
   barFill: { height: 4, borderRadius: 2, backgroundColor: colors.brandSecondary },
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.pill, borderWidth: 1 },
   statusPillText: { fontSize: 9, fontWeight: "700", letterSpacing: 1 },
+  metaTxt: { color: colors.muted, fontSize: 11, marginTop: 2 },
+
+  reportRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  reportIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.brandTertiary },
+
+  uploadBtn: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.surfaceInverse, borderRadius: radii.md, marginBottom: spacing.lg },
+  uploadTxt: { color: colors.brandSecondary, letterSpacing: 1.5, fontSize: 12, fontWeight: "600" },
+  docBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radii.pill },
+  docBtnTxt: { color: colors.brand, fontSize: 10, letterSpacing: 1.2, fontWeight: "600" },
+  emptyTxt: { color: colors.muted, fontSize: 13, textAlign: "center", paddingVertical: spacing.xl, fontStyle: "italic" },
 });

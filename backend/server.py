@@ -29,7 +29,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ.get("DB_NAME", "regal_park_villas")
-JWT_SECRET = os.environ.get("JWT_SECRET", "regal-park-villas-secret-change-me")
+JWT_SECRET = os.environ["JWT_SECRET"]  # required, no fallback
 JWT_ALG = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7 days
 
@@ -153,6 +153,7 @@ class DailySiteReport(BaseModel):
     weather: str
     safety_observations: Optional[str] = None
     submitted_by: str
+    photos: List[str] = []  # base64 data URIs
 
 
 class ContractorBill(BaseModel):
@@ -192,6 +193,20 @@ class Snag(BaseModel):
     assigned_contractor: str
     deadline: str
     status: str  # OPEN / IN_PROGRESS / RESOLVED
+    photos: List[str] = []  # base64 data URIs
+
+
+class Document(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    category: str  # ARCHITECTURAL / STRUCTURAL / MEP / INTERIOR / LANDSCAPE / AGREEMENT / INVOICE / WARRANTY / OTHER
+    drawing_number: Optional[str] = None
+    revision: str = "R0"
+    uploaded_by: str
+    uploaded_at: str
+    file_data: str  # base64 data URI
+    file_name: str
 
 
 class TeamMember(BaseModel):
@@ -255,6 +270,25 @@ async def get_current_user(token: Optional[str] = Depends(oauth2)) -> User:
     return User(**doc)
 
 
+# RBAC role groups (server-side enforcement; UI-level visibility on top)
+INTERNAL_ROLES = set(ROLES) - {"CLIENT"}
+FINANCE_ROLES = {"ADMIN", "PROJECT_DIRECTOR", "PROJECT_MANAGER", "QUANTITY_SURVEYOR", "ACCOUNTANT"}
+WRITE_STAGE_ROLES = {"ADMIN", "PROJECT_DIRECTOR", "PROJECT_MANAGER", "SITE_ENGINEER", "PLANNING_ENGINEER"}
+WRITE_QUALITY_ROLES = {"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "QUANTITY_SURVEYOR", "SAFETY_OFFICER"}
+
+
+def require_roles(allowed: set[str]):
+    async def _dep(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient role permissions")
+        return user
+    return _dep
+
+
+require_internal = require_roles(INTERNAL_ROLES)
+require_finance = require_roles(FINANCE_ROLES)
+
+
 # ---------------------------------------------------------------------------
 # App + Router
 # ---------------------------------------------------------------------------
@@ -305,7 +339,7 @@ async def get_project(project_id: str, user: User = Depends(get_current_user)):
 
 # ---- Dashboard ----
 @api.get("/dashboard/summary")
-async def dashboard_summary(user: User = Depends(get_current_user)):
+async def dashboard_summary(user: User = Depends(require_internal)):
     projects = await db.projects.find({}, {"_id": 0}).to_list(100)
     stages = await db.stages.find({}, {"_id": 0}).to_list(500)
     bills = await db.bills.find({}, {"_id": 0}).to_list(500)
@@ -355,8 +389,9 @@ async def dashboard_summary(user: User = Depends(get_current_user)):
 
 
 # ---- Domain lists (filter by project_id) ----
-def _project_router(coll_name: str, model):
-    async def lister(project_id: Optional[str] = None, user: User = Depends(get_current_user)):
+def _project_router(coll_name: str, model, dep=None):
+    dep = dep or get_current_user
+    async def lister(project_id: Optional[str] = None, user: User = Depends(dep)):
         q = {"project_id": project_id} if project_id else {}
         rows = await db[coll_name].find(q, {"_id": 0}).to_list(500)
         if coll_name == "stages":
@@ -366,10 +401,10 @@ def _project_router(coll_name: str, model):
 
 
 api.add_api_route("/stages", _project_router("stages", Stage), response_model=List[Stage])
-api.add_api_route("/boq", _project_router("boq", BOQItem), response_model=List[BOQItem])
-api.add_api_route("/materials", _project_router("materials", Material), response_model=List[Material])
+api.add_api_route("/boq", _project_router("boq", BOQItem, dep=require_finance), response_model=List[BOQItem])
+api.add_api_route("/materials", _project_router("materials", Material, dep=require_internal), response_model=List[Material])
 api.add_api_route("/site-reports", _project_router("reports", DailySiteReport), response_model=List[DailySiteReport])
-api.add_api_route("/billing", _project_router("bills", ContractorBill), response_model=List[ContractorBill])
+api.add_api_route("/billing", _project_router("bills", ContractorBill, dep=require_finance), response_model=List[ContractorBill])
 api.add_api_route("/quality", _project_router("quality", QualityCheck), response_model=List[QualityCheck])
 api.add_api_route("/snags", _project_router("snags", Snag), response_model=List[Snag])
 api.add_api_route("/team", _project_router("team", TeamMember), response_model=List[TeamMember])
@@ -388,10 +423,11 @@ class SiteReportCreate(BaseModel):
     tomorrow_plan: str
     weather: str
     safety_observations: Optional[str] = None
+    photos: List[str] = []
 
 
 @api.post("/site-reports", response_model=DailySiteReport)
-async def create_site_report(body: SiteReportCreate, user: User = Depends(get_current_user)):
+async def create_site_report(body: SiteReportCreate, user: User = Depends(require_roles(WRITE_STAGE_ROLES))):
     rec = DailySiteReport(id=str(uuid.uuid4()), submitted_by=user.full_name, **body.dict())
     await db.reports.insert_one(rec.dict())
     return rec
@@ -406,7 +442,7 @@ class StageUpdate(BaseModel):
 
 
 @api.patch("/stages/{stage_id}", response_model=Stage)
-async def update_stage(stage_id: str, body: StageUpdate, user: User = Depends(get_current_user)):
+async def update_stage(stage_id: str, body: StageUpdate, user: User = Depends(require_roles(WRITE_STAGE_ROLES))):
     update = {k: v for k, v in body.dict().items() if v is not None}
     await db.stages.update_one({"id": stage_id}, {"$set": update})
     doc = await db.stages.find_one({"id": stage_id}, {"_id": 0})
@@ -421,7 +457,7 @@ class QualityToggle(BaseModel):
 
 
 @api.patch("/quality/{qc_id}", response_model=QualityCheck)
-async def update_quality(qc_id: str, body: QualityToggle, user: User = Depends(get_current_user)):
+async def update_quality(qc_id: str, body: QualityToggle, user: User = Depends(require_roles(WRITE_QUALITY_ROLES))):
     await db.quality.update_one({"id": qc_id}, {"$set": body.dict(exclude_none=True)})
     doc = await db.quality.find_one({"id": qc_id}, {"_id": 0})
     if not doc:
@@ -430,16 +466,236 @@ async def update_quality(qc_id: str, body: QualityToggle, user: User = Depends(g
 
 
 class SnagUpdate(BaseModel):
-    status: str
+    status: Optional[str] = None
+    photos: Optional[List[str]] = None
 
 
 @api.patch("/snags/{snag_id}", response_model=Snag)
-async def update_snag(snag_id: str, body: SnagUpdate, user: User = Depends(get_current_user)):
-    await db.snags.update_one({"id": snag_id}, {"$set": body.dict()})
+async def update_snag(snag_id: str, body: SnagUpdate, user: User = Depends(require_internal)):
+    payload = {k: v for k, v in body.dict().items() if v is not None}
+    await db.snags.update_one({"id": snag_id}, {"$set": payload})
     doc = await db.snags.find_one({"id": snag_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Snag not found")
     return Snag(**doc)
+
+
+# ---- Documents (drawings, agreements, invoices, warranties) ----
+class DocumentCreate(BaseModel):
+    project_id: str
+    title: str
+    category: str
+    drawing_number: Optional[str] = None
+    revision: str = "R0"
+    file_data: str
+    file_name: str
+
+
+@api.get("/documents", response_model=List[Document])
+async def list_documents(
+    project_id: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    q = {"project_id": project_id} if project_id else {}
+    rows = await db.documents.find(q, {"_id": 0}).to_list(500)
+    return [Document(**r) for r in rows]
+
+
+@api.post("/documents", response_model=Document)
+async def create_document(body: DocumentCreate, user: User = Depends(require_internal)):
+    doc = Document(
+        id=str(uuid.uuid4()),
+        uploaded_by=user.full_name,
+        uploaded_at=datetime.now(timezone.utc).isoformat(),
+        **body.dict(),
+    )
+    await db.documents.insert_one(doc.dict())
+    return doc
+
+
+@api.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str, user: User = Depends(require_internal)):
+    res = await db.documents.delete_one({"id": doc_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Document not found")
+    return {"ok": True}
+
+
+# ---- PDF Reports ----
+from fastapi.responses import Response
+from io import BytesIO
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, PageBreak,
+)
+
+
+GOLD = rl_colors.HexColor("#B8860B")
+CHARCOAL = rl_colors.HexColor("#1A1A1A")
+MUTED = rl_colors.HexColor("#7A6F5D")
+IVORY = rl_colors.HexColor("#F0EDE8")
+
+
+def _inr(n: float) -> str:
+    if n is None:
+        return "—"
+    if abs(n) >= 1e7:
+        return f"INR {n/1e7:.2f} Cr"
+    if abs(n) >= 1e5:
+        return f"INR {n/1e5:.2f} L"
+    if abs(n) >= 1e3:
+        return f"INR {n/1e3:.0f}K"
+    return f"INR {n:.0f}"
+
+
+def _pdf_response(title: str, story: list, project_name: str) -> Response:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=22 * mm, bottomMargin=18 * mm, title=title)
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontName="Helvetica-Bold", fontSize=22, textColor=CHARCOAL, spaceAfter=4)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=MUTED, spaceAfter=2)
+    brand = ParagraphStyle("brand", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=GOLD, spaceAfter=12, alignment=2)
+
+    full_story = [
+        Paragraph("REGAL PARK VILLAS", brand),
+        Paragraph(title, h1),
+        Paragraph(f"{project_name} · Generated {datetime.now(timezone.utc).strftime('%d %b %Y, %H:%M UTC')}", sub),
+        Spacer(1, 12),
+    ] + story
+    doc.build(full_story)
+    buf.seek(0)
+    safe = title.lower().replace(" ", "-")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="rpv-{safe}.pdf"'},
+    )
+
+
+def _kpi_table(rows):
+    t = Table(rows, hAlign="LEFT", colWidths=[55 * mm, 35 * mm, 55 * mm, 35 * mm])
+    t.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+        ("TEXTCOLOR", (2, 0), (2, -1), MUTED),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return t
+
+
+def _data_table(headers, rows, col_widths=None):
+    data = [headers] + rows
+    t = Table(data, hAlign="LEFT", colWidths=col_widths)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), CHARCOAL),
+        ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, IVORY]),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD),
+    ]))
+    return t
+
+
+@api.get("/reports/{kind}")
+async def report_pdf(kind: str, project_id: str, user: User = Depends(require_internal)):
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Project not found")
+    pname = f"{project['name']} · {project['plot_number']}"
+
+    if kind == "progress":
+        stages = sorted(await db.stages.find({"project_id": project_id}, {"_id": 0}).to_list(500), key=lambda r: r.get("order", 0))
+        story = [
+            _kpi_table([
+                ["BUDGET", _inr(project["budget_inr"]), "PROGRESS", f"{project['progress_pct']}%"],
+                ["SPENT", _inr(project["actual_spent_inr"]), "AREA", f"{project['built_up_area_sqft']} sqft"],
+                ["TARGET HANDOVER", project["target_handover_date"], "STATUS", project["status"]],
+            ]),
+            Spacer(1, 12),
+            _data_table(
+                ["#", "Stage", "Status", "Progress", "Planned"],
+                [[str(s["order"]), s["name"], s["status"].replace("_", " "), f"{int(s['progress_pct'])}%", f"{s['planned_start']} → {s['planned_end']}"] for s in stages],
+                col_widths=[10 * mm, 55 * mm, 30 * mm, 22 * mm, 55 * mm],
+            ),
+        ]
+        return _pdf_response("Project Progress Report", story, pname)
+
+    if kind == "cost":
+        boq = await db.boq.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+        total_b = sum(b["approved_budget_inr"] for b in boq)
+        total_s = sum(b["actual_spent_inr"] for b in boq)
+        story = [
+            _kpi_table([
+                ["BUDGET", _inr(total_b), "SPENT", _inr(total_s)],
+                ["UTILISATION", f"{(total_s/total_b*100):.1f}%" if total_b else "—", "VARIANCE", _inr(total_b - total_s)],
+            ]),
+            Spacer(1, 12),
+            _data_table(
+                ["Item", "Vendor", "Budget", "Spent", "Status"],
+                [[b["description"][:38], b["vendor"][:18], _inr(b["approved_budget_inr"]), _inr(b["actual_spent_inr"]), b["payment_status"]] for b in boq],
+                col_widths=[55 * mm, 35 * mm, 25 * mm, 25 * mm, 22 * mm],
+            ),
+        ]
+        return _pdf_response("Cost Report", story, pname)
+
+    if kind == "delay":
+        stages = sorted(await db.stages.find({"project_id": project_id}, {"_id": 0}).to_list(500), key=lambda r: r.get("order", 0))
+        delayed = [s for s in stages if s["status"] == "DELAYED"]
+        in_prog = [s for s in stages if s["status"] == "IN_PROGRESS"]
+        story = [
+            _kpi_table([
+                ["DELAYED STAGES", str(len(delayed)), "IN PROGRESS", str(len(in_prog))],
+                ["TOTAL STAGES", str(len(stages)), "COMPLETED", str(sum(1 for s in stages if s["status"] == "COMPLETED"))],
+            ]),
+            Spacer(1, 12),
+            _data_table(
+                ["Stage", "Responsible", "Planned End", "Status", "Reason"],
+                [[s["name"], s["responsible"][:18], s["planned_end"], s["status"].replace("_", " "), (s.get("delay_reason") or "—")[:24]] for s in delayed + in_prog],
+                col_widths=[40 * mm, 35 * mm, 28 * mm, 28 * mm, 35 * mm],
+            ),
+        ]
+        return _pdf_response("Delay Report", story, pname)
+
+    if kind == "safety":
+        reports = await db.reports.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+        quality = await db.quality.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+        snags = await db.snags.find({"project_id": project_id}, {"_id": 0}).to_list(500)
+        fails = [q for q in quality if q["result"] == "FAIL"]
+        story = [
+            _kpi_table([
+                ["TOTAL DAILY LOGS", str(len(reports)), "QUALITY FAILS", str(len(fails))],
+                ["OPEN SNAGS", str(sum(1 for s in snags if s["status"] != "RESOLVED")), "QUALITY CHECKS", str(len(quality))],
+            ]),
+            Spacer(1, 12),
+            _data_table(
+                ["Date", "Weather", "Labour", "Safety Observation"],
+                [[r["date"], r["weather"][:14], str(r["labour_count"]), (r.get("safety_observations") or "—")[:50]] for r in sorted(reports, key=lambda x: x["date"], reverse=True)],
+                col_widths=[24 * mm, 28 * mm, 18 * mm, 90 * mm],
+            ),
+            Spacer(1, 12),
+            Paragraph("<b>Quality Failures Requiring Rectification</b>", getSampleStyleSheet()["Normal"]),
+            Spacer(1, 4),
+            _data_table(
+                ["Type", "Item", "Responsible", "Deadline"],
+                [[q["checklist_type"], q["item"][:36], q["responsible"][:20], q.get("deadline") or "—"] for q in fails],
+                col_widths=[28 * mm, 70 * mm, 35 * mm, 27 * mm],
+            ) if fails else Paragraph("No failures.", getSampleStyleSheet()["Normal"]),
+        ]
+        return _pdf_response("Safety & Quality Report", story, pname)
+
+    raise HTTPException(404, "Unknown report kind. Use: progress, cost, delay, safety")
 
 
 # ---------------------------------------------------------------------------
@@ -804,7 +1060,103 @@ async def seed_db():
         })
     await db.reports.insert_many(report_docs)
 
-    log.info("Seed: complete (Villa Aurelia full dataset).")
+    # ---- Additional villas (lighter datasets to demonstrate multi-project) ----
+    EXTRA_VILLAS = [
+        {
+            "id": "villa-celeste-08",
+            "name": "Villa Celeste",
+            "plot_number": "Plot 08, Regal Park",
+            "client_name": "Mr. Karthik Subbiah",
+            "villa_type": "4BHK Premium Villa",
+            "built_up_area_sqft": 5400,
+            "start_date": "2025-09-15",
+            "target_handover_date": "2027-02-28",
+            "budget_inr": 28000000.0,
+            "actual_spent_inr": 6800000.0,
+            "progress_pct": 22.0,
+            "project_manager": pm["full_name"],
+            "site_engineer": se["full_name"],
+            "consultants": ["Studio Atelier", "Aurum MEP"],
+            "contractors": ["Sai Constructions", "Aurum MEP"],
+            "hero_image_url": "https://images.pexels.com/photos/16573669/pexels-photo-16573669.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+            "status": "IN_PROGRESS",
+        },
+        {
+            "id": "villa-meridian-05",
+            "name": "Villa Meridian",
+            "plot_number": "Plot 05, Regal Park",
+            "client_name": "Dr. Sneha & Mr. Rohit Kapoor",
+            "villa_type": "6BHK Mansion with Spa",
+            "built_up_area_sqft": 9200,
+            "start_date": "2026-01-10",
+            "target_handover_date": "2027-09-30",
+            "budget_inr": 52000000.0,
+            "actual_spent_inr": 2100000.0,
+            "progress_pct": 8.0,
+            "project_manager": pm["full_name"],
+            "site_engineer": se["full_name"],
+            "consultants": ["Studio Atelier", "Aurum MEP", "Maison Privée"],
+            "contractors": ["Sai Constructions"],
+            "hero_image_url": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+            "status": "IN_PROGRESS",
+        },
+    ]
+    await db.projects.insert_many(EXTRA_VILLAS)
+
+    # Compact stage seed for extra villas (first ~10 stages each)
+    extra_stages = []
+    for villa in EXTRA_VILLAS:
+        prog = villa["progress_pct"]
+        for i, (name, ps, pe, _, _, resp) in enumerate(STAGE_DEFS, start=1):
+            if i > 12:
+                break
+            # progress threshold per stage based on overall pct
+            stage_pct = 100 if i * 8 < prog else (60 if i * 8 < prog + 12 else 0)
+            status_v = "COMPLETED" if stage_pct == 100 else ("IN_PROGRESS" if stage_pct > 0 else "NOT_STARTED")
+            extra_stages.append({
+                "id": str(uuid.uuid4()),
+                "project_id": villa["id"],
+                "order": i,
+                "name": name,
+                "planned_start": ps,
+                "planned_end": pe,
+                "actual_start": ps if stage_pct > 0 else None,
+                "actual_end": pe if stage_pct == 100 else None,
+                "responsible": resp,
+                "progress_pct": float(stage_pct),
+                "status": status_v,
+                "remarks": "On track" if status_v != "NOT_STARTED" else "Scheduled",
+                "delay_reason": None,
+            })
+    if extra_stages:
+        await db.stages.insert_many(extra_stages)
+
+    # Sample documents (drawings, agreements) for Villa Aurelia
+    base_pdf_b64 = "data:application/pdf;base64,JVBERi0xLjAKJeLjz9MKMSAwIG9iaiA8PC9UeXBlL0NhdGFsb2c+PiBlbmRvYmoKdHJhaWxlciA8PC9Sb290IDEgMCBSPj4="
+    sample_docs = [
+        ("Architectural Plans - Ground Floor", "ARCHITECTURAL", "RPV-AR-001", "R3"),
+        ("Structural Detail - Slab Plan", "STRUCTURAL", "RPV-ST-014", "R2"),
+        ("MEP Layout - Electrical", "MEP", "RPV-EL-007", "R1"),
+        ("Construction Agreement", "AGREEMENT", None, "R0"),
+        ("Sai Constructions Invoice #SC-014", "INVOICE", None, "R0"),
+    ]
+    doc_records = []
+    for title, cat, num, rev in sample_docs:
+        doc_records.append({
+            "id": str(uuid.uuid4()),
+            "project_id": PROJECT_ID,
+            "title": title,
+            "category": cat,
+            "drawing_number": num,
+            "revision": rev,
+            "uploaded_by": "Anita Krishnan",
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "file_data": base_pdf_b64,
+            "file_name": f"{(num or title).replace(' ', '_').lower()}.pdf",
+        })
+    await db.documents.insert_many(doc_records)
+
+    log.info("Seed: complete (Villa Aurelia + 2 extra villas + sample documents).")
 
 
 # ---------------------------------------------------------------------------

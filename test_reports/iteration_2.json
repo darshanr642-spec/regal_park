@@ -1,0 +1,72 @@
+{
+  "summary": "Iteration 2 testing complete. Backend: 28/28 pytest cases PASS in /app/backend/tests/test_iteration2.py covering (a) 3-villa seed (Villa Aurelia/Celeste/Meridian), (b) Client RBAC denial on /api/boq, /api/billing, /api/materials, /api/dashboard/summary (all 403), (c) Client allowed reads on /api/projects /api/stages /api/snags /api/quality /api/team /api/approvals /api/site-reports /api/documents (all 200), (d) Client PATCH on /api/quality and /api/snags forbidden (403), Client POST /api/documents forbidden (403), (e) Site Engineer POST /api/site-reports with photos[] persisted (200), PATCH /api/quality and /api/snags (photos appended) (200), (f) Documents POST/GET/DELETE round-trip OK, 5 seeded sample docs for Villa Aurelia, (g) PDF /api/reports/{progress,cost,delay,safety}?project_id=villa-aurelia-12 all return application/pdf, %PDF magic bytes, non-zero size; /api/reports/progress with no token → 401, with client token → 403, unknown kind → 404. JWT_SECRET is env-only (no fallback) — backend running fine. Frontend (Expo web preview at 390x844): admin and client logins succeed; AFTER reload the project switcher chips render correctly for 3 villas on Dashboard, Site, PDF Reports module and Documents module; hero card, KPIs, stage list all load; PDF Reports screen shows 4 report cards (Progress / Cost / Delay / Safety); Documents screen lists the 5 seeded drawings/agreements/invoice; client login shows the welcome client card (cost KPIs hidden) and stage activity loads. HOWEVER, one HIGH-priority frontend bug: on initial login (before reload) the dashboard shows NO project switcher chips and NO hero card — ProjectProvider runs api.projects() on mount BEFORE the auth token is set, gets 401 → projects=[] → never re-refreshes when auth state changes. A page reload restores the token from storage and everything works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ProjectProvider (src/lib/project.tsx)",
+        "issue": "Race condition: api.projects() is called on mount before AuthProvider has hydrated/set the bearer token, so it returns 401, projects=[] and stays empty. Result: on the FIRST login, Dashboard renders no chips, no hero card, no stages list ('- stage updates' empty). Hard reload after login fixes it because the token is restored from storage and refresh() succeeds. Fix: re-call refresh() inside ProjectProvider whenever the auth user/token changes (e.g. add a useEffect that depends on `useAuth().user` or `token`).",
+        "testID": "project-chip-villa-aurelia-12 / hero-project-card",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Client dashboard greeting",
+        "issue": "Client full_name 'Mr. & Mrs. Aravind Rao' is split on the first space so the greeting renders just 'Mr.' (see /app/frontend/app/(tabs)/index.tsx line 71: user.full_name.split(' ')[0]). Cosmetic.",
+        "testID": "user-avatar header",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Login -> Dashboard project context",
+        "issue": "After first login, ProjectProvider never re-fetches /api/projects with the new token. Same impact on Site tab and module screens that depend on `current` project.",
+        "affected_testIDs": ["project-chip-*", "hero-project-card", "site-project-chip-*"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "PDF Reports module",
+        "issues": ["Inactive project chips (Villa Celeste / Villa Meridian) appear as oversized white ovals with the chip label sitting outside/above them in the screenshot — chip text contrast and bounding box look off on this screen (chips render fine on Dashboard / Site / Documents). Minor visual polish, not functional."]
+      },
+      {
+        "screen": "Global (carry-over from iter1)",
+        "issues": ["React Native Web console warning: 'shadow*' style props deprecated — recommend boxShadow."]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/test_reports/pytest/iteration2_results.xml"
+  ],
+  "action_items": [
+    "Fix HIGH-priority bug in /app/frontend/src/lib/project.tsx: add an effect that calls `refresh()` whenever the auth user/token changes. e.g. inside ProjectProvider import useAuth and add `useEffect(() => { if (user) refresh(); }, [user, refresh])`. This restores chips/hero/stages on first login without requiring a page reload.",
+    "Optional: render the client's first name properly (e.g. use a `display_name` field or split on '&' first) so the client greeting is not just 'Mr.'.",
+    "Optional: investigate the PDF Reports screen project-chip layout (inactive chip appears as a tall white oval).",
+    "Note: legacy /app/backend/tests/test_regal_park_api.py has counts hard-coded for the single-villa world (expects projects len==1, stages==23, etc.) and will now fail because of the 2 extra seeded villas. Either delete it or update the assertions; iteration_2 tests are the source of truth going forward."
+  ],
+  "critical_code_review_comments": [
+    "ProjectProvider has no dependency on auth state — see UI bug above. This is the only real issue found this iteration.",
+    "/api/documents currently allows GET for clients (200) but the POST/DELETE are correctly restricted to INTERNAL_ROLES — matches spec.",
+    "PDF generator (reportlab) is synchronous and runs inside the request handler; for larger projects this could block the event loop. Acceptable for current dataset size but worth noting.",
+    "server.py is now 1187 lines — consider splitting into routers/seed/models modules in a future iteration.",
+    "Documents store base64 file_data inline in Mongo — fine for MVP, but consider GridFS/blob storage if real PDFs/photos start landing."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (new)",
+    "/app/test_reports/iteration_2.json (new)",
+    "/app/test_reports/pytest/iteration2_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 iteration_2 tests)",
+    "frontend": "~85% — all iter2 screens render correctly AFTER a reload; first-login project context race blocks chips/hero/stages on Dashboard & Site until reload."
+  },
+  "seed_data_creation": "No new seed needed. Backend auto-seeds 3 villas + 5 sample documents on first start. Tests created/cleaned-up a TEST_iter2 document and a TEST_iter2 site report (the site report was left in DB; non-destructive).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. Iteration 2 pytest file: /app/backend/tests/test_iteration2.py (run: `EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest /app/backend/tests/test_iteration2.py -v`). Legacy /app/backend/tests/test_regal_park_api.py is now stale (expects 1 villa & no RBAC) — update or delete it. Frontend testIDs: login-email / login-password / login-submit-button; tab-dashboard|projects|site|profile; project-chip-{id}; site-project-chip-{id}; hero-project-card; logout-button; add-site-report. Profile menu rows: 'Documents & Drawings' and 'PDF Reports' navigate to /module/<slug>. To repro the dashboard race-condition bug: login fresh as admin → dashboard has only KPI cards and 'Construction Progress · stage updates' empty; press F5 → chips + hero + stages appear.",
+  "rca_of_issue": "Root cause of the missing chips/hero on first login: in /app/frontend/src/lib/project.tsx the ProjectProvider runs `refresh()` exactly once on mount (useEffect with [refresh] dep). At that moment AuthProvider has not yet attached a bearer token to the api client, so GET /api/projects responds 401 and the catch block leaves `projects=[]`. Dashboard then gates the chip row on `projects.length > 1` and the hero on `current` being truthy, so both are hidden. Fix is a single useEffect inside ProjectProvider that re-calls refresh() whenever the auth user/token changes."
+}

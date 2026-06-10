@@ -68,6 +68,12 @@ export const api = {
     request<any[]>(`/team${projectId ? `?project_id=${projectId}` : ""}`),
   approvals: (projectId?: string) =>
     request<any[]>(`/approvals${projectId ? `?project_id=${projectId}` : ""}`),
+  documents: (projectId?: string) =>
+    request<any[]>(`/documents${projectId ? `?project_id=${projectId}` : ""}`),
+  createDocument: (body: any) =>
+    request<any>("/documents", { method: "POST", body }),
+  deleteDocument: (id: string) =>
+    request<any>(`/documents/${id}`, { method: "DELETE" }),
   createReport: (body: any) =>
     request<any>("/site-reports", { method: "POST", body }),
   patchStage: (id: string, body: any) =>
@@ -76,4 +82,19 @@ export const api = {
     request<any>(`/quality/${id}`, { method: "PATCH", body }),
   patchSnag: (id: string, body: any) =>
     request<any>(`/snags/${id}`, { method: "PATCH", body }),
+  reportPdfUrl: async (kind: string, projectId: string) => {
+    const tok = await getToken();
+    return `${BASE}/api/reports/${kind}?project_id=${projectId}&token=${tok}`;
+  },
 };
+
+export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {
+  const tok = await getToken();
+  const res = await fetch(`${BASE}/api/reports/${kind}?project_id=${projectId}`, {
+    headers: { Authorization: `Bearer ${tok}` },
+  });
+  if (!res.ok) throw new Error(`PDF ${res.status}`);
+  return res.blob();
+}
+
+export { BASE as API_BASE };

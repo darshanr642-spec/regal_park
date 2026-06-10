@@ -15,47 +15,49 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
+import { useProject } from "@/src/lib/project";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const { projects, current, setCurrent } = useProject();
   const [data, setData] = useState<any>(null);
-  const [project, setProject] = useState<any>(null);
+  const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [d, projects] = await Promise.all([api.dashboard(), api.projects()]);
+      const [d, s] = await Promise.all([
+        api.dashboard().catch(() => null),
+        current ? api.stages(current.id) : Promise.resolve([]),
+      ]);
       setData(d);
-      setProject(projects[0]);
-    } catch (e) {
-      // surface in UI; fine for MVP
+      setStages(s);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [current]);
 
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return (
-      <View style={styles.center}><ActivityIndicator color={colors.brand} size="large" /></View>
-    );
+    return <View style={styles.center}><ActivityIndicator color={colors.brand} size="large" /></View>;
   }
 
   const overBudget = data && data.budget_used_pct > data.avg_progress_pct + 8;
+  const project = current;
 
-  const kpis: { label: string; value: string; sub?: string; tone?: string; icon: any }[] = [
-    { label: "ACTIVE VILLAS", value: String(data?.under_construction ?? 0), sub: `of ${data?.total_projects} total`, icon: "home" },
-    { label: "AVG PROGRESS", value: `${data?.avg_progress_pct ?? 0}%`, sub: "across portfolio", icon: "trending-up" },
-    { label: "BUDGET USED", value: `${data?.budget_used_pct ?? 0}%`, sub: formatINR(data?.actual_spent_inr ?? 0), tone: overBudget ? "warn" : undefined, icon: "pie-chart" },
-    { label: "DELAYED TASKS", value: String(data?.delayed_tasks ?? 0), sub: "need attention", tone: (data?.delayed_tasks ?? 0) > 0 ? "warn" : undefined, icon: "alert-triangle" },
-    { label: "PENDING BILLS", value: String(data?.pending_bills ?? 0), sub: formatINR(data?.pending_bills_amount_inr ?? 0), icon: "credit-card" },
-    { label: "OPEN SNAGS", value: String(data?.open_snags ?? 0), sub: `${data?.quality_issues ?? 0} quality issues`, icon: "tool" },
-  ];
+  const kpis: { label: string; value: string; sub?: string; tone?: string; icon: any }[] = data ? [
+    { label: "ACTIVE VILLAS", value: String(data.under_construction ?? 0), sub: `of ${data.total_projects} total`, icon: "home" },
+    { label: "AVG PROGRESS", value: `${data.avg_progress_pct}%`, sub: "across portfolio", icon: "trending-up" },
+    { label: "BUDGET USED", value: `${data.budget_used_pct}%`, sub: formatINR(data.actual_spent_inr), tone: overBudget ? "warn" : undefined, icon: "pie-chart" },
+    { label: "DELAYED TASKS", value: String(data.delayed_tasks), sub: "need attention", tone: data.delayed_tasks > 0 ? "warn" : undefined, icon: "alert-triangle" },
+    { label: "PENDING BILLS", value: String(data.pending_bills), sub: formatINR(data.pending_bills_amount_inr), icon: "credit-card" },
+    { label: "OPEN SNAGS", value: String(data.open_snags), sub: `${data.quality_issues} quality issues`, icon: "tool" },
+  ] : [];
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -63,7 +65,6 @@ export default function Dashboard() {
         contentContainerStyle={{ paddingBottom: spacing.xxxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.hello}>Good day,</Text>
@@ -74,7 +75,28 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Hero */}
+        {/* Project switcher chips */}
+        {projects.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            {projects.map((p) => (
+              <Pressable
+                key={p.id}
+                testID={`project-chip-${p.id}`}
+                onPress={() => setCurrent(p)}
+                style={[styles.chip, current?.id === p.id && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, current?.id === p.id && styles.chipTextActive]}>
+                  {p.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
         {project && (
           <Pressable
             testID="hero-project-card"
@@ -82,13 +104,10 @@ export default function Dashboard() {
             onPress={() => router.push(`/project/${project.id}` as any)}
           >
             <Image source={project.hero_image_url} style={styles.heroImg} contentFit="cover" />
-            <LinearGradient
-              colors={["transparent", "rgba(26,26,26,0.85)"]}
-              style={StyleSheet.absoluteFillObject}
-            />
+            <LinearGradient colors={["transparent", "rgba(26,26,26,0.85)"]} style={StyleSheet.absoluteFillObject} />
             <View style={styles.heroBottom}>
               <View style={styles.heroGlass}>
-                <Text style={styles.heroBadge}>FLAGSHIP</Text>
+                <Text style={styles.heroBadge}>{project.id === "villa-aurelia-12" ? "FLAGSHIP" : "ACTIVE"}</Text>
                 <Text style={styles.heroName}>{project.name}</Text>
                 <Text style={styles.heroPlot}>{project.plot_number} · {project.villa_type}</Text>
                 <View style={styles.progressTrack}>
@@ -103,35 +122,44 @@ export default function Dashboard() {
           </Pressable>
         )}
 
-        {/* KPI grid */}
-        <View style={styles.kpiGrid}>
-          {kpis.map((k) => (
-            <View key={k.label} style={[styles.kpi, k.tone === "warn" && styles.kpiWarn]} testID={`kpi-${k.label.replace(/\s/g, "-").toLowerCase()}`}>
-              <View style={styles.kpiHead}>
-                <Text style={styles.kpiLabel}>{k.label}</Text>
-                <Feather name={k.icon} size={14} color={colors.brand} />
+        {data && (
+          <View style={styles.kpiGrid}>
+            {kpis.map((k) => (
+              <View key={k.label} style={[styles.kpi, k.tone === "warn" && styles.kpiWarn]} testID={`kpi-${k.label.replace(/\s/g, "-").toLowerCase()}`}>
+                <View style={styles.kpiHead}>
+                  <Text style={styles.kpiLabel}>{k.label}</Text>
+                  <Feather name={k.icon} size={14} color={colors.brand} />
+                </View>
+                <Text style={styles.kpiValue}>{k.value}</Text>
+                {k.sub && <Text style={styles.kpiSub}>{k.sub}</Text>}
               </View>
-              <Text style={styles.kpiValue}>{k.value}</Text>
-              {k.sub && <Text style={styles.kpiSub}>{k.sub}</Text>}
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
 
-        {/* Recent activity */}
+        {!data && user?.role === "CLIENT" && (
+          <View style={styles.clientCard}>
+            <Feather name="key" size={20} color={colors.brand} />
+            <Text style={styles.clientCardText}>
+              Welcome to your client portal. Track your villa&apos;s progress below — internal cost data is intentionally hidden.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Construction Progress</Text>
-          <Text style={styles.sectionSub}>Latest stage updates</Text>
+          <Text style={styles.sectionSub}>{project?.name} · stage updates</Text>
         </View>
         <View style={{ paddingHorizontal: spacing.lg }}>
-          {(data?.recent_activity || []).map((a: any) => (
-            <View key={a.id} style={styles.row} testID={`activity-${a.id}`}>
-              <View style={[styles.rowDot, { backgroundColor: statusColor(a.status) }]} />
+          {stages.slice(0, 8).map((s: any) => (
+            <View key={s.id} style={styles.row} testID={`activity-${s.id}`}>
+              <View style={[styles.rowDot, { backgroundColor: statusColor(s.status) }]} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{a.title}</Text>
-                <Text style={styles.rowStatus}>{a.status.replace("_", " ")} · {Math.round(a.progress)}%</Text>
+                <Text style={styles.rowTitle}>{s.name}</Text>
+                <Text style={styles.rowStatus}>{s.status.replace("_", " ")} · {Math.round(s.progress_pct)}%</Text>
               </View>
-              <View style={[styles.statusPill, { borderColor: statusColor(a.status) }]}>
-                <Text style={[styles.statusPillText, { color: statusColor(a.status) }]}>{a.status === "COMPLETED" ? "DONE" : a.status === "IN_PROGRESS" ? "ACTIVE" : a.status === "DELAYED" ? "DELAY" : "PLAN"}</Text>
+              <View style={[styles.statusPill, { borderColor: statusColor(s.status) }]}>
+                <Text style={[styles.statusPillText, { color: statusColor(s.status) }]}>{s.status === "COMPLETED" ? "DONE" : s.status === "IN_PROGRESS" ? "ACTIVE" : s.status === "DELAYED" ? "DELAY" : "PLAN"}</Text>
               </View>
             </View>
           ))}
@@ -159,16 +187,16 @@ const styles = StyleSheet.create({
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   avatarText: { fontFamily: font.display, color: colors.onBrandTertiary, fontWeight: "700", letterSpacing: 1 },
 
+  chipRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm, flexDirection: "row" },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexShrink: 0 },
+  chipActive: { backgroundColor: colors.surfaceInverse, borderColor: colors.surfaceInverse },
+  chipText: { fontSize: 12, color: colors.muted, fontWeight: "500" },
+  chipTextActive: { color: colors.brandSecondary },
+
   hero: { marginHorizontal: spacing.lg, height: 280, borderRadius: radii.lg, overflow: "hidden", marginBottom: spacing.lg },
   heroImg: { width: "100%", height: "100%" },
   heroBottom: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg },
-  heroGlass: {
-    backgroundColor: "rgba(26,26,26,0.55)",
-    borderRadius: radii.md,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.35)",
-  },
+  heroGlass: { backgroundColor: "rgba(26,26,26,0.55)", borderRadius: radii.md, padding: spacing.lg, borderWidth: 1, borderColor: "rgba(212,175,55,0.35)" },
   heroBadge: { color: colors.brandSecondary, fontSize: 10, letterSpacing: 2.5, marginBottom: 4 },
   heroName: { fontFamily: font.display, color: "#fff", fontSize: 24 },
   heroPlot: { color: colors.brandTertiary, fontSize: 12, marginTop: 2 },
@@ -178,22 +206,15 @@ const styles = StyleSheet.create({
   heroMetaTxt: { color: "#fff", fontSize: 12, opacity: 0.9 },
 
   kpiGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: spacing.lg, gap: spacing.md, marginTop: spacing.sm },
-  kpi: {
-    width: "47%",
-    flexGrow: 1,
-    minWidth: 140,
-    backgroundColor: colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    padding: spacing.lg,
-    ...shadow.card,
-  },
+  kpi: { width: "47%", flexGrow: 1, minWidth: 140, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.lg, ...shadow.card },
   kpiWarn: { borderColor: colors.warning, backgroundColor: "#FFF8EE" },
   kpiHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   kpiLabel: { color: colors.muted, fontSize: 10, letterSpacing: 1.5 },
   kpiValue: { fontFamily: font.display, fontSize: 26, color: colors.onSurface, marginTop: spacing.sm },
   kpiSub: { color: colors.muted, fontSize: 11, marginTop: 2 },
+
+  clientCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.lg, padding: spacing.lg, backgroundColor: colors.brandTertiary, borderRadius: radii.md, marginTop: spacing.sm },
+  clientCardText: { flex: 1, color: colors.onBrandTertiary, fontSize: 13, lineHeight: 19 },
 
   section: { paddingHorizontal: spacing.lg, marginTop: spacing.xxl, marginBottom: spacing.md },
   sectionTitle: { fontFamily: font.display, fontSize: 20, color: colors.onSurface },

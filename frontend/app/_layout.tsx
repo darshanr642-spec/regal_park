@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/lib/auth";
+import { ProjectProvider } from "@/src/lib/project";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -24,7 +25,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <AuthProvider>
-        <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+        <ProjectProvider>
+          <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+        </ProjectProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

@@ -10,27 +10,34 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
+import { useProject } from "@/src/lib/project";
+import { pickImage } from "@/src/lib/uploads";
 import { colors, font, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 type Tab = "LOGS" | "QUALITY" | "SNAGS";
 
 export default function Site() {
   const [tab, setTab] = useState<Tab>("LOGS");
-  const [project, setProject] = useState<any>(null);
+  const { current: project, projects, setCurrent } = useProject();
   const [reports, setReports] = useState<any[]>([]);
   const [quality, setQuality] = useState<any[]>([]);
   const [snags, setSnags] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ work_completed: "", labour_count: "", weather: "Sunny, 32°C", tomorrow_plan: "", materials_received: "", machinery_used: "", safety_observations: "", issues: "" });
+  const [form, setForm] = useState({ work_completed: "", labour_count: "", weather: "Sunny, 32°C", tomorrow_plan: "", materials_received: "", machinery_used: "", safety_observations: "", issues: "", photos: [] as string[] });
 
   const load = useCallback(async () => {
+    if (!project) { setLoading(false); return; }
     try {
-      const [ps, r, q, s] = await Promise.all([api.projects(), api.reports(), api.quality(), api.snags()]);
-      setProject(ps[0]);
+      const [r, q, s] = await Promise.all([
+        api.reports(project.id),
+        api.quality(project.id),
+        api.snags(project.id),
+      ]);
       setReports(r);
       setQuality(q);
       setSnags(s);
@@ -38,9 +45,15 @@ export default function Site() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [project]);
 
   useEffect(() => { load(); }, [load]);
+
+  const addPhoto = async () => {
+    const uri = await pickImage();
+    if (uri) setForm({ ...form, photos: [...form.photos, uri] });
+  };
+  const removePhoto = (idx: number) => setForm({ ...form, photos: form.photos.filter((_, i) => i !== idx) });
 
   const submitReport = async () => {
     if (!project) return;
@@ -56,25 +69,39 @@ export default function Site() {
         tomorrow_plan: form.tomorrow_plan,
         weather: form.weather,
         safety_observations: form.safety_observations,
+        photos: form.photos,
       };
       const rec = await api.createReport(body);
       setReports([rec, ...reports]);
       setShowForm(false);
-      setForm({ ...form, work_completed: "", labour_count: "", tomorrow_plan: "" });
+      setForm({ ...form, work_completed: "", labour_count: "", tomorrow_plan: "", photos: [] });
     } catch (e) { /* */ }
   };
 
   const toggleQuality = async (q: any) => {
     const next = q.result === "PASS" ? "FAIL" : q.result === "FAIL" ? "PENDING" : "PASS";
-    const updated = await api.patchQuality(q.id, { result: next });
-    setQuality(quality.map((x) => (x.id === q.id ? updated : x)));
+    try {
+      const updated = await api.patchQuality(q.id, { result: next });
+      setQuality(quality.map((x) => (x.id === q.id ? updated : x)));
+    } catch {}
   };
 
   const toggleSnag = async (s: any) => {
     const order = ["OPEN", "IN_PROGRESS", "RESOLVED"];
     const next = order[(order.indexOf(s.status) + 1) % order.length];
-    const updated = await api.patchSnag(s.id, { status: next });
-    setSnags(snags.map((x) => (x.id === s.id ? updated : x)));
+    try {
+      const updated = await api.patchSnag(s.id, { status: next });
+      setSnags(snags.map((x) => (x.id === s.id ? updated : x)));
+    } catch {}
+  };
+
+  const attachSnagPhoto = async (s: any) => {
+    const uri = await pickImage();
+    if (!uri) return;
+    try {
+      const updated = await api.patchSnag(s.id, { photos: [...(s.photos || []), uri] });
+      setSnags(snags.map((x) => (x.id === s.id ? updated : x)));
+    } catch {}
   };
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
@@ -86,7 +113,21 @@ export default function Site() {
         <Text style={styles.sub}>{project?.name} · {project?.plot_number}</Text>
       </View>
 
-      {/* Segmented */}
+      {projects.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {projects.map((p) => (
+            <Pressable
+              key={p.id}
+              testID={`site-project-chip-${p.id}`}
+              style={[styles.chip, project?.id === p.id && styles.chipActive]}
+              onPress={() => setCurrent(p)}
+            >
+              <Text style={[styles.chipText, project?.id === p.id && styles.chipTextActive]}>{p.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       <View style={styles.segment}>
         {(["LOGS", "QUALITY", "SNAGS"] as Tab[]).map((t) => (
           <Pressable
@@ -137,6 +178,24 @@ export default function Site() {
                     />
                   </View>
                 ))}
+
+                {/* Photo grid */}
+                <View style={{ marginTop: spacing.md }}>
+                  <Text style={styles.label}>Site photos ({form.photos.length})</Text>
+                  <View style={styles.photoGrid}>
+                    {form.photos.map((p, i) => (
+                      <Pressable key={i} onPress={() => removePhoto(i)} style={styles.photoTile} testID={`form-photo-${i}`}>
+                        <Image source={p} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                        <View style={styles.photoX}><Feather name="x" size={12} color="#fff" /></View>
+                      </Pressable>
+                    ))}
+                    <Pressable testID="add-photo-button" onPress={addPhoto} style={[styles.photoTile, styles.photoAdd]}>
+                      <Feather name="camera" size={20} color={colors.brand} />
+                      <Text style={styles.photoAddTxt}>Add</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
                 <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.lg }}>
                   <Pressable style={[styles.cta, { flex: 1, backgroundColor: colors.surfaceTertiary }]} onPress={() => setShowForm(false)}>
                     <Text style={[styles.ctaText, { color: colors.onSurface }]}>CANCEL</Text>
@@ -154,9 +213,16 @@ export default function Site() {
                   <Text style={styles.cardChip}>{r.labour_count} workers</Text>
                 </View>
                 <Text style={styles.cardBody}>{r.work_completed}</Text>
+                {r.photos && r.photos.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
+                    {r.photos.map((p: string, i: number) => (
+                      <Image key={i} source={p} style={styles.reportPhoto} contentFit="cover" />
+                    ))}
+                  </ScrollView>
+                )}
                 <View style={styles.cardFooter}>
-                  <Text style={styles.metaTxt}><Feather name="cloud" size={11} color={colors.muted} /> {r.weather}</Text>
-                  <Text style={styles.metaTxt}><Feather name="user" size={11} color={colors.muted} /> {r.submitted_by}</Text>
+                  <Text style={styles.metaTxt}>{r.weather}</Text>
+                  <Text style={styles.metaTxt}>{r.submitted_by}</Text>
                 </View>
               </View>
             ))}
@@ -164,12 +230,7 @@ export default function Site() {
         )}
 
         {tab === "QUALITY" && quality.map((q) => (
-          <Pressable
-            key={q.id}
-            testID={`quality-${q.id}`}
-            style={styles.card}
-            onPress={() => toggleQuality(q)}
-          >
+          <Pressable key={q.id} testID={`quality-${q.id}`} style={styles.card} onPress={() => toggleQuality(q)}>
             <View style={styles.cardHead}>
               <Text style={styles.cardChip}>{q.checklist_type}</Text>
               <View style={[styles.statusPill, { borderColor: statusColor(q.result) }]}>
@@ -182,21 +243,29 @@ export default function Site() {
         ))}
 
         {tab === "SNAGS" && snags.map((s) => (
-          <Pressable
-            key={s.id}
-            testID={`snag-${s.id}`}
-            style={styles.card}
-            onPress={() => toggleSnag(s)}
-          >
-            <View style={styles.cardHead}>
-              <Text style={styles.cardChip}>{s.room}</Text>
-              <View style={[styles.statusPill, { borderColor: statusColor(s.status) }]}>
-                <Text style={[styles.statusPillText, { color: statusColor(s.status) }]}>{s.status.replace("_", " ")}</Text>
+          <View key={s.id} style={styles.card} testID={`snag-${s.id}`}>
+            <Pressable onPress={() => toggleSnag(s)}>
+              <View style={styles.cardHead}>
+                <Text style={styles.cardChip}>{s.room}</Text>
+                <View style={[styles.statusPill, { borderColor: statusColor(s.status) }]}>
+                  <Text style={[styles.statusPillText, { color: statusColor(s.status) }]}>{s.status.replace("_", " ")}</Text>
+                </View>
               </View>
-            </View>
-            <Text style={styles.cardBody}>{s.issue}</Text>
-            <Text style={styles.metaTxt}>{s.category} · {s.assigned_contractor} · by {s.deadline}</Text>
-          </Pressable>
+              <Text style={styles.cardBody}>{s.issue}</Text>
+              <Text style={styles.metaTxt}>{s.category} · {s.assigned_contractor} · by {s.deadline}</Text>
+            </Pressable>
+            {s.photos && s.photos.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
+                {s.photos.map((p: string, i: number) => (
+                  <Image key={i} source={p} style={styles.reportPhoto} contentFit="cover" />
+                ))}
+              </ScrollView>
+            )}
+            <Pressable testID={`snag-add-photo-${s.id}`} onPress={() => attachSnagPhoto(s)} style={styles.snagAddBtn}>
+              <Feather name="camera" size={14} color={colors.brand} />
+              <Text style={styles.snagAddTxt}>ATTACH PHOTO</Text>
+            </Pressable>
+          </View>
         ))}
       </ScrollView>
     </SafeAreaView>
@@ -206,9 +275,14 @@ export default function Site() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   title: { fontFamily: font.display, fontSize: 24, color: colors.onSurface },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  chipRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm, flexDirection: "row" },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexShrink: 0 },
+  chipActive: { backgroundColor: colors.surfaceInverse, borderColor: colors.surfaceInverse },
+  chipText: { fontSize: 11, color: colors.muted },
+  chipTextActive: { color: colors.brandSecondary },
   segment: { flexDirection: "row", marginHorizontal: spacing.lg, backgroundColor: colors.surfaceTertiary, borderRadius: radii.md, padding: 4, marginBottom: spacing.sm },
   segItem: { flex: 1, paddingVertical: spacing.sm, alignItems: "center", borderRadius: radii.sm },
   segActive: { backgroundColor: colors.surfaceInverse },
@@ -229,4 +303,12 @@ const styles = StyleSheet.create({
   formTitle: { fontFamily: font.display, fontSize: 18, color: colors.onSurface, marginBottom: spacing.sm },
   label: { fontSize: 10, color: colors.muted, letterSpacing: 1.5, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.sm, padding: spacing.md, fontSize: 14, color: colors.onSurface, backgroundColor: colors.surface },
+  photoGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  photoTile: { width: 72, height: 72, borderRadius: radii.sm, overflow: "hidden", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  photoAdd: { alignItems: "center", justifyContent: "center", borderStyle: "dashed", gap: 4 },
+  photoAddTxt: { color: colors.brand, fontSize: 9, letterSpacing: 1 },
+  photoX: { position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
+  reportPhoto: { width: 100, height: 100, borderRadius: radii.sm, marginRight: spacing.sm },
+  snagAddBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radii.pill },
+  snagAddTxt: { color: colors.brand, fontSize: 10, letterSpacing: 1.2, fontWeight: "600" },
 });

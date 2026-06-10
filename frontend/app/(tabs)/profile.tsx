@@ -12,7 +12,9 @@ const MENU = [
   { label: "Contractor Billing", icon: "credit-card", route: "/module/billing" },
   { label: "Team & Responsibility", icon: "users", route: "/module/team" },
   { label: "Approvals", icon: "check-square", route: "/module/approvals" },
-  { label: "Client Portal", icon: "key", route: "/module/client" },
+  { label: "Documents & Drawings", icon: "folder", route: "/module/documents" },
+  { label: "PDF Reports", icon: "file-text", route: "/module/reports" },
+  { label: "Client Portal View", icon: "key", route: "/module/client" },
 ];
 
 export default function Profile() {
