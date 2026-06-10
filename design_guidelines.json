@@ -1,0 +1,149 @@
+{
+  "app_name": "Regal Park Villas",
+  "personality": "3 Editorial Mobile LIGHT with 6 Glass / Luxe surfaces",
+  "personality_one_liner": "A highly refined, editorial command center with cinematic glass layers that feels like a luxury real estate brochure meeting enterprise utility.",
+  "color": {
+    "surface": "#FAFAFA",
+    "onSurface": "#1A1A1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#2C2C2C",
+    "surfaceTertiary": "#F0EDE8",
+    "onSurfaceTertiary": "#3D3D3D",
+    "surfaceInverse": "#1A1A1A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#B8860B",
+    "brandPrimary": "#C5A059",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D4AF37",
+    "onBrandSecondary": "#1A1A1A",
+    "brandTertiary": "#EEDD82",
+    "onBrandTertiary": "#332A00",
+    "success": "#2E5F3E",
+    "onSuccess": "#FFFFFF",
+    "warning": "#D97706",
+    "onWarning": "#FFFFFF",
+    "error": "#9B2C2C",
+    "onError": "#FFFFFF",
+    "info": "#4A5568",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E0D8",
+    "borderStrong": "#D1C7B7",
+    "divider": "#E5E0D8"
+  },
+  "typography": {
+    "displayFontFamily": "Playfair Display",
+    "textFontFamily": "Inter",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Editorial spacing rhythms with generous vertical breathing room. Cards and sections must never feel cramped. Use intentional whitespace to spotlight luxury.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 4,
+    "md": 8,
+    "lg": 16,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Feather",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use frosted glass overlay on the hero villa image card.",
+      "Use blur for the bottom tab bar and sticky headers over scrolling content.",
+      "Apply translucent tinted base (>=70% surface) behind glass surfaces to ensure text contrast."
+    ],
+    "dont's": [
+      "Never blur body text regions, form fields, or standard list rows.",
+      "Don't stack more than 2 glass surfaces."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "Executive KPI Dashboard providing an immediate macro-view of luxury villa construction progress, financial health, and urgent bottlenecks.",
+      "states": {
+        "loading": "Centered spinner matching brandPrimary",
+        "empty": "Illustration or large brand icon with a prompt to set up a project.",
+        "error": "Readable text with retry button."
+      },
+      "layout": "Header: Project selector (Initials RP avatar). Hero Area: Full-width card with the Villa Aurelia exterior photo, overlaid with a glass panel showing overall progress % and status. KPI Grid: 2-column or wide cards displaying schedule variance, budget vs actual, pending approvals. Recent Activity List: Stacked rows with site photo thumbnails and quick updates."
+    },
+    {
+      "name": "Projects",
+      "purpose": "Comprehensive view of all active villas, with deep-dive to stages and team.",
+      "states": {
+        "loading": "Spinner centered",
+        "empty": "No active projects. Text: 'No projects available.' with Add Project button.",
+        "error": "Error loading projects. Retry."
+      },
+      "layout": "List of large cards per project. Each card features an image, villa name, client name, and a progress ring (brandPrimary). Tapping leads to a detailed tabbed view: Timeline, Team, BOQ."
+    },
+    {
+      "name": "Site",
+      "purpose": "Field operations hub for submitting daily reports, uploading site photos, and performing quality checklists.",
+      "states": {
+        "loading": "Spinner centered",
+        "empty": "No site updates today.",
+        "error": "Failed to load site data. Retry."
+      },
+      "layout": "Tabbed or segmented control: Daily Logs, Quality Checklist, Snags. Daily Logs: Form input with photo upload grid. Quality Checklist: Scrollable list of items (Foundation, RCC) with pass/fail toggle and remarks."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Role-based settings and secondary module access (Billing, CRM, Procurement).",
+      "states": {
+        "loading": "Spinner centered",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Simple list layout. User profile header (glass or surfaceSecondary), followed by menu rows for other modules with Feather icons."
+    }
+  ],
+  "images": {
+    "hero_villa_aurelia": {
+      "url": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Villa Aurelia - Plot 12 exterior"
+    },
+    "project_cover_2": {
+      "url": "https://images.pexels.com/photos/16573669/pexels-photo-16573669.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Modern villa showcasing luxury and elegance"
+    }
+  },
+  "instructions_to_main_agent": [
+    "STRICT NO BLUE/PURPLE: Do not use any indigo, violet, blue, or purple (including navy) anywhere. Use the provided Charcoal and Gold/Bronze palette.",
+    "Typography: Use Playfair Display for all headers, titles, and KPI numeric values. Use Inter (sans-serif) for body text, labels, and forms.",
+    "Visual Hierarchy: The hero image (Villa Aurelia) MUST use a gradient-to-dark scrim pattern (top to bottom) if text is overlaid, or use a frosted glass container over the image.",
+    "BOQ & Tables: Build professional, clean tables for BOQ & Cost Control using surfaceSecondary alternating row colors or subtle dividers, right-aligned numbers, and clear highlighting of overruns.",
+    "Stage Timeline: Design the 23 construction stages using a sleek vertical stepper timeline with elegant typography and gold status rings.",
+    "Image Fallback: If a user logo/avatar is needed and no image is available, use Initials (e.g., 'RP') inside a brandTertiary tinted circle. Never use generic user icons.",
+    "Cards: Avoid heavy shadows. Use a 1pt border (border) with surfaceSecondary and shadow tier 1 for a refined, paper-like editorial feel.",
+    "Haptics: Serialize haptics for tab changes, form submissions, and quality checklist pass/fail toggles."
+  ]
+}
