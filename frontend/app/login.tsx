@@ -66,6 +66,7 @@ export default function Login() {
               <Text style={styles.brandMark}>RP</Text>
               <Text style={styles.brandName}>REGAL PARK VILLAS</Text>
               <Text style={styles.brandTag}>Turnkey luxury villa management</Text>
+              <Text style={styles.brandParent}>BY STERLITEE DEVELOPERS LLP</Text>
             </View>
 
             <View style={styles.card} testID="login-card">
@@ -148,6 +149,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   brandTag: { color: colors.brandTertiary, marginTop: spacing.xs, letterSpacing: 1.4, fontSize: 11 },
+  brandParent: { color: "rgba(238,221,130,0.7)", marginTop: spacing.md, letterSpacing: 3, fontSize: 9, fontWeight: "600" },
   card: {
     backgroundColor: "rgba(250,250,250,0.96)",
     borderRadius: radii.lg,

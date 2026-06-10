@@ -1,0 +1,56 @@
+{
+  "summary": "Iteration 3 testing complete (backend + frontend). Backend: 25/25 pytest cases PASS in /app/backend/tests/test_iteration3.py covering (a) /api/team admin sees real +91 phones & real emails; client sees phone='—' and email='—' (PII scrubbed server-side); (b) /api/documents pagination — limit=3&skip=0 → items=3,total=5,has_more=true; limit=3&skip=3 → items=2,has_more=false; POST then GET shows new doc first (newest-first ordering preserved); (c) RBAC regressions: client 403 on /boq /billing /materials /dashboard/summary, 200 on /projects /stages /snags /quality /team /approvals /site-reports /documents, 403 on PATCH /quality and POST /documents; site engineer 200 on POST /site-reports; (d) PDF /api/reports/{progress,cost,delay,safety} all 200 application/pdf, extracted text via pypdf contains 'STERLITEE DEVELOPERS LLP' and 'REGAL PARK VILLAS' brand line; (e) /api/ root health 200. JWT_SECRET still env-only — backend stable. Frontend (Expo web preview at 390x844): Login screen renders 'REGAL PARK VILLAS' title + 'BY STERLITEE DEVELOPERS LLP' subtitle; Profile shows brand-footer testID with 'STERLITEE DEVELOPERS LLP' and 'Regal Park Villas · v1.2'; all 8 module menu items present (BOQ, Procurement, Billing, Team, Approvals, Documents & Drawings, PDF Reports, Client Portal View); Documents screen shows 'Showing 5 of 5' pagination text and correctly HIDES load-more-docs button (only 5 docs ≤ 20); Site tab → existing report photo thumbnail click opens [data-testid=\"lightbox\"] modal, close button [data-testid=\"lightbox-close\"] dismisses it; Snag photo thumbnail opens the same lightbox and close works; Sign out returns to login; Client login + Team module shows 24 '—' dashes (12 members × 2 fields), no +91 phone leak, no @ email leak — PII scrubbing wired end-to-end. No regressions detected. React-Native-Web console warnings 'shadow* deprecated' and 'props.pointerEvents deprecated' are carry-over from upstream RN Web; not blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Dashboard greeting (carry-over from iter2)",
+        "issue": "Client full_name 'Mr. & Mrs. Aravind Rao' is split on first space so greeting renders just 'Mr.' (e.g. /app/frontend/app/(tabs)/index.tsx and profile show 'Good day, Mr.'). Cosmetic only; not iter3 scope.",
+        "testID": "user-avatar header / profile card",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Global",
+        "issues": [
+          "Console warning: 'shadow*' style props deprecated — recommend boxShadow on RN Web 0.20+.",
+          "Console warning: 'props.pointerEvents' deprecated — should be moved to style.pointerEvents."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [
+    "Optional: replace remaining shadow* style props with boxShadow and props.pointerEvents → style.pointerEvents to silence RN-Web deprecation warnings (cosmetic, not blocking iter3).",
+    "Optional (carry-over from iter2): improve client greeting so 'Mr. & Mrs. Aravind Rao' does not collapse to 'Mr.' (split on '&' first or add a display_name field).",
+    "Legacy test file /app/backend/tests/test_regal_park_api.py from iter1 (if still present) hard-codes single-villa counts and will fail against the 3-villa seed — delete or update. Source of truth is now test_iteration2.py + test_iteration3.py."
+  ],
+  "critical_code_review_comments": [
+    "PII scrubbing in /api/team is implemented server-side (server.py L421-426) — correct. CLIENT cannot leak phone/email even with crafted requests.",
+    "/api/documents pagination clamps limit to [1,100] and skip≥0 — sane defaults (server.py L516-517).",
+    "Documents are sorted by uploaded_at desc, then paginated — works correctly with seeded ISO timestamps and POSTed docs picking up datetime.now(UTC).",
+    "server.py is 1219 lines — still recommended to split into routers/seed modules in a future iteration (carry-over).",
+    "PhotoLightbox (Modal+ScrollView with maximumZoomScale=4) is web-safe: testIDs lightbox / lightbox-close / lightbox-prev / lightbox-next all addressable; close handler verified.",
+    "expo-image-manipulator compression path (uploads.ts) cannot be exercised via web preview (no real ImagePicker) — backend simply receives the data URI; size-bound behaviour should be validated on a native build."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py (new)",
+    "/app/test_reports/pytest/iteration3_results.xml (new)",
+    "/app/test_reports/iteration_3.json (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (25/25 iteration_3 tests)",
+    "frontend": "100% on all iter3 acceptance criteria (login subtitle, profile brand-footer, 8 menu items, documents pagination text + load-more hidden, photo lightbox open/close on both report and snag photos, sign out, client team PII scrubbed)"
+  },
+  "seed_data_creation": "No new seed required. Backend auto-seeds 5 sample documents for Villa Aurelia. Tests created and immediately deleted a TEST_iter3 document; one TEST_iter3 site report was created and left in DB (non-destructive, harmless).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest /app/backend/tests/test_iteration3.py -v. Notable frontend testIDs: login-card / login-email / login-password / login-submit-button; brand-footer; menu-boq-cost-control / menu-procurement / menu-contractor-billing / menu-team-responsibility / menu-approvals / menu-documents-drawings / menu-pdf-reports / menu-client-portal-view; back-button; documents-count; load-more-docs; report-photo-{id}-{idx}; snag-photo-{id}-{idx}; lightbox / lightbox-close / lightbox-prev / lightbox-next; logout-button. Bottom tabs (Dashboard/Projects/Site/Profile) DO NOT have testIDs — selector via page.get_by_text(name, exact=True).last works. Iter3 features are fully wired and functional end-to-end; no retest needed.",
+  "rca_of_issue": "N/A — no failing tests this iteration."
+}

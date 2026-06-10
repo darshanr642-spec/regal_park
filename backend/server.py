@@ -407,8 +407,23 @@ api.add_api_route("/site-reports", _project_router("reports", DailySiteReport), 
 api.add_api_route("/billing", _project_router("bills", ContractorBill, dep=require_finance), response_model=List[ContractorBill])
 api.add_api_route("/quality", _project_router("quality", QualityCheck), response_model=List[QualityCheck])
 api.add_api_route("/snags", _project_router("snags", Snag), response_model=List[Snag])
-api.add_api_route("/team", _project_router("team", TeamMember), response_model=List[TeamMember])
 api.add_api_route("/approvals", _project_router("approvals", Approval), response_model=List[Approval])
+
+
+# Team list with PII scrubbing for CLIENT role
+@api.get("/team", response_model=List[TeamMember])
+async def list_team(
+    project_id: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    q = {"project_id": project_id} if project_id else {}
+    rows = await db.team.find(q, {"_id": 0}).to_list(500)
+    if user.role == "CLIENT":
+        # Mask direct contact details to protect contractor relationships
+        for r in rows:
+            r["phone"] = "—"
+            r["email"] = "—"
+    return [TeamMember(**r) for r in rows]
 
 
 # ---- Write endpoints (limited; main MVP focuses on rich read + critical create) ----
@@ -491,14 +506,31 @@ class DocumentCreate(BaseModel):
     file_name: str
 
 
-@api.get("/documents", response_model=List[Document])
+@api.get("/documents")
 async def list_documents(
     project_id: Optional[str] = None,
+    limit: int = 20,
+    skip: int = 0,
     user: User = Depends(get_current_user),
 ):
+    limit = max(1, min(limit, 100))
+    skip = max(0, skip)
     q = {"project_id": project_id} if project_id else {}
-    rows = await db.documents.find(q, {"_id": 0}).to_list(500)
-    return [Document(**r) for r in rows]
+    total = await db.documents.count_documents(q)
+    rows = (
+        await db.documents.find(q, {"_id": 0})
+        .sort("uploaded_at", -1)
+        .skip(skip)
+        .limit(limit)
+        .to_list(limit)
+    )
+    return {
+        "items": [Document(**r).dict() for r in rows],
+        "total": total,
+        "limit": limit,
+        "skip": skip,
+        "has_more": skip + len(rows) < total,
+    }
 
 
 @api.post("/documents", response_model=Document)
@@ -560,7 +592,7 @@ def _pdf_response(title: str, story: list, project_name: str) -> Response:
     brand = ParagraphStyle("brand", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=GOLD, spaceAfter=12, alignment=2)
 
     full_story = [
-        Paragraph("REGAL PARK VILLAS", brand),
+        Paragraph("STERLITEE DEVELOPERS LLP &nbsp;·&nbsp; REGAL PARK VILLAS", brand),
         Paragraph(title, h1),
         Paragraph(f"{project_name} · Generated {datetime.now(timezone.utc).strftime('%d %b %Y, %H:%M UTC')}", sub),
         Spacer(1, 12),

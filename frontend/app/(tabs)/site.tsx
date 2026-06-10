@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
 import { useProject } from "@/src/lib/project";
 import { pickImage } from "@/src/lib/uploads";
+import { PhotoLightbox } from "@/src/components/PhotoLightbox";
 import { colors, font, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 type Tab = "LOGS" | "QUALITY" | "SNAGS";
@@ -29,6 +30,7 @@ export default function Site() {
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ work_completed: "", labour_count: "", weather: "Sunny, 32°C", tomorrow_plan: "", materials_received: "", machinery_used: "", safety_observations: "", issues: "", photos: [] as string[] });
+  const [lightbox, setLightbox] = useState<{ uris: string[]; idx: number } | null>(null);
 
   const load = useCallback(async () => {
     if (!project) { setLoading(false); return; }
@@ -216,7 +218,9 @@ export default function Site() {
                 {r.photos && r.photos.length > 0 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
                     {r.photos.map((p: string, i: number) => (
-                      <Image key={i} source={p} style={styles.reportPhoto} contentFit="cover" />
+                      <Pressable key={i} onPress={() => setLightbox({ uris: r.photos, idx: i })} testID={`report-photo-${r.id}-${i}`}>
+                        <Image source={p} style={styles.reportPhoto} contentFit="cover" />
+                      </Pressable>
                     ))}
                   </ScrollView>
                 )}
@@ -257,7 +261,9 @@ export default function Site() {
             {s.photos && s.photos.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
                 {s.photos.map((p: string, i: number) => (
-                  <Image key={i} source={p} style={styles.reportPhoto} contentFit="cover" />
+                  <Pressable key={i} onPress={() => setLightbox({ uris: s.photos, idx: i })} testID={`snag-photo-${s.id}-${i}`}>
+                    <Image source={p} style={styles.reportPhoto} contentFit="cover" />
+                  </Pressable>
                 ))}
               </ScrollView>
             )}
@@ -268,6 +274,12 @@ export default function Site() {
           </View>
         ))}
       </ScrollView>
+      <PhotoLightbox
+        visible={!!lightbox}
+        uris={lightbox?.uris || []}
+        initialIndex={lightbox?.idx || 0}
+        onClose={() => setLightbox(null)}
+      />
     </SafeAreaView>
   );
 }

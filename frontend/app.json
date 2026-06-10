@@ -1,17 +1,27 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
-    "version": "1.0.0",
+    "name": "Regal Park Villas",
+    "slug": "regal-park-villas",
+    "version": "1.2.0",
+    "description": "Sterlitee Developers LLP — turnkey luxury villa construction management",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sterlitee.regalparkvillas",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Attach site photos to daily reports and snags"
+      }
     },
     "android": {
+      "package": "com.sterlitee.regalparkvillas",
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"

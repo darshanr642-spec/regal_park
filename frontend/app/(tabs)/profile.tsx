@@ -54,6 +54,11 @@ export default function Profile() {
           <View style={styles.rowIcon}><Feather name="log-out" size={18} color={colors.error} /></View>
           <Text style={[styles.rowLabel, { color: colors.error }]}>Sign out</Text>
         </Pressable>
+
+        <View style={styles.footer} testID="brand-footer">
+          <Text style={styles.footerBrand}>STERLITEE DEVELOPERS LLP</Text>
+          <Text style={styles.footerApp}>Regal Park Villas · v1.2</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -74,4 +79,7 @@ const styles = StyleSheet.create({
   rowIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary, marginRight: spacing.md },
   rowLabel: { flex: 1, color: colors.onSurface, fontSize: 14, fontWeight: "500" },
   logout: { borderColor: "#F1D6D6", backgroundColor: "#FBF3F3" },
+  footer: { alignItems: "center", marginTop: spacing.xxl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider },
+  footerBrand: { fontFamily: font.display, fontSize: 13, color: colors.brand, letterSpacing: 3 },
+  footerApp: { color: colors.muted, fontSize: 11, marginTop: 4, letterSpacing: 1 },
 });

@@ -37,25 +37,46 @@ export default function Module() {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyKind, setBusyKind] = useState<string | null>(null);
+  const [docTotal, setDocTotal] = useState(0);
+  const [docHasMore, setDocHasMore] = useState(false);
+  const [docLoadingMore, setDocLoadingMore] = useState(false);
 
   const title = TITLES[name as string] || "Module";
   const isClient = user?.role === "CLIENT";
 
   useEffect(() => {
     if (!project) { setLoading(false); return; }
+    setLoading(true);
+    if (name === "documents") {
+      api.documents(project.id, 20, 0)
+        .then((res) => { setRows(res.items); setDocTotal(res.total); setDocHasMore(res.has_more); })
+        .catch(() => { setRows([]); setDocHasMore(false); })
+        .finally(() => setLoading(false));
+      return;
+    }
     const fn =
       name === "boq" ? () => api.boq(project.id) :
       name === "procurement" ? () => api.materials(project.id) :
       name === "billing" ? () => api.billing(project.id) :
       name === "team" ? () => api.team(project.id) :
       name === "approvals" ? () => api.approvals(project.id) :
-      name === "documents" ? () => api.documents(project.id) :
       name === "reports" ? () => Promise.resolve([]) :
       name === "client" ? () => api.stages(project.id) :
       () => api.stages(project.id);
-    setLoading(true);
     fn().then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
   }, [name, project]);
+
+  const loadMoreDocs = async () => {
+    if (!project || docLoadingMore || !docHasMore) return;
+    setDocLoadingMore(true);
+    try {
+      const res = await api.documents(project.id, 20, rows.length);
+      setRows([...rows, ...res.items]);
+      setDocHasMore(res.has_more);
+    } finally {
+      setDocLoadingMore(false);
+    }
+  };
 
   const totals = useMemo(() => {
     if (name === "boq") {
@@ -198,6 +219,11 @@ export default function Module() {
                 <Text style={styles.uploadTxt}>UPLOAD DRAWING / DOCUMENT</Text>
               </Pressable>
             )}
+            {docTotal > 0 && (
+              <Text style={styles.paginationCount} testID="documents-count">
+                Showing {rows.length} of {docTotal}
+              </Text>
+            )}
             {rows.length === 0 && (
               <Text style={styles.emptyTxt}>No documents yet for this project.</Text>
             )}
@@ -225,6 +251,15 @@ export default function Module() {
                 </View>
               </View>
             ))}
+            {docHasMore && (
+              <Pressable testID="load-more-docs" onPress={loadMoreDocs} style={styles.loadMoreBtn} disabled={docLoadingMore}>
+                {docLoadingMore ? (
+                  <ActivityIndicator color={colors.brand} />
+                ) : (
+                  <Text style={styles.loadMoreTxt}>LOAD MORE</Text>
+                )}
+              </Pressable>
+            )}
           </>
         )}
 

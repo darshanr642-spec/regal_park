@@ -68,8 +68,10 @@ export const api = {
     request<any[]>(`/team${projectId ? `?project_id=${projectId}` : ""}`),
   approvals: (projectId?: string) =>
     request<any[]>(`/approvals${projectId ? `?project_id=${projectId}` : ""}`),
-  documents: (projectId?: string) =>
-    request<any[]>(`/documents${projectId ? `?project_id=${projectId}` : ""}`),
+  documents: (projectId?: string, limit = 20, skip = 0) =>
+    request<{ items: any[]; total: number; limit: number; skip: number; has_more: boolean }>(
+      `/documents?${projectId ? `project_id=${projectId}&` : ""}limit=${limit}&skip=${skip}`,
+    ),
   createDocument: (body: any) =>
     request<any>("/documents", { method: "POST", body }),
   deleteDocument: (id: string) =>
