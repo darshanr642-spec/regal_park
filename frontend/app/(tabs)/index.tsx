@@ -68,7 +68,15 @@ export default function Dashboard() {
         <View style={styles.header}>
           <View>
             <Text style={styles.hello}>Good day,</Text>
-            <Text style={styles.userName}>{(user?.full_name || "").split(/[ &]/).filter(Boolean)[0]}</Text>
+            <Text style={styles.userName} numberOfLines={1}>
+              {(() => {
+                const fn = user?.full_name || "";
+                // Pick the first capitalised word that's clearly a given name (skip "Mr.", "Mrs.", "Dr." titles)
+                const tokens = fn.replace(/&/g, " ").split(/\s+/).filter(Boolean);
+                const nonTitle = tokens.find((t) => !/^(Mr\.?|Mrs\.?|Ms\.?|Dr\.?|Prof\.?)$/i.test(t));
+                return nonTitle || tokens[0] || "there";
+              })()}
+            </Text>
           </View>
           <View style={styles.avatar} testID="user-avatar">
             <Text style={styles.avatarText}>RP</Text>
