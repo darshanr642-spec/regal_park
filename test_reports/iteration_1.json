@@ -1,0 +1,41 @@
+{
+  "summary": "First iteration of Regal Park Villas MVP testing completed successfully. Backend: 34/34 pytest cases passing covering auth (JWT, /me, 401), projects (list+detail+404), dashboard summary with all required KPIs, all 9 domain list endpoints with exact seed counts (stages=23 sorted by order, boq=20, materials=12, billing=6, quality=9, snags=8, team=12, approvals=8, site-reports=5), POST /api/site-reports create+verify, PATCH /api/quality and /api/snags toggles, and 401 protection across all protected GETs. Frontend (Expo web preview at mobile viewport 390x844): login screen renders, admin login navigates to dashboard with hero project card + 6 KPI cards + 6 recent activity rows, hero tap navigates to /project/villa-aurelia-12, project detail timeline renders all 23 stages, TEAM tab shows 12 members, BOQ tab shows 20 rows, Projects tab shows villa card, Site tab segmented control switches Logs/Quality/Snags, quality+snag tap-to-toggle work, NEW DAILY REPORT form opens and submits, profile shows 6 module rows + logout works, BOQ module shows budget/spent/used% summary band + 20 item cards, client login also reaches dashboard. No backend errors, no React Native red screens. Minor console deprecation warnings: 'shadow*' style props deprecated (use boxShadow) and props.pointerEvents deprecated (use style.pointerEvents) — these are React Native Web warnings only, not blocking.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global", "issues": ["React Native Web console warnings: 'shadow*' style props deprecated (use boxShadow); props.pointerEvents deprecated (use style.pointerEvents). Likely from theme.ts shadow.card and/or LinearGradient. Cosmetic only."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_regal_park_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional polish) Migrate shadow* style props in /app/frontend/src/lib/theme.ts (shadow.card) to boxShadow for web, or guard with Platform.select to suppress RN Web deprecation warnings.",
+    "(Optional polish) Replace pointerEvents prop usage with style.pointerEvents in components (likely inside LinearGradient/Pressable overlays in login.tsx)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 835 lines — borderline; could be split into routes/, models/, seed/ modules if it grows further.",
+    "JWT_SECRET has an insecure default value in code; for production it should be required from env (currently falls back to 'regal-park-villas-secret-change-me').",
+    "All MongoDB queries correctly exclude _id ({'_id': 0}) — good.",
+    "RBAC is not enforced: e.g. CLIENT role can call /api/dashboard/summary, /api/boq, /api/billing etc. Same restriction note for Client Portal was implied in the request but is not implemented server-side. Main agent to decide if role gating is in scope for next iteration.",
+    "Seed is idempotent only via users count check; if users exist but other collections were partially wiped, re-seed will not run. Acceptable for MVP."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_regal_park_api.py (new)",
+    "/app/test_reports/iteration_1.json (new)",
+    "/app/test_reports/pytest/pytest_results.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (34/34)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "No new seed data created. Backend startup auto-seeds Villa Aurelia (idempotent). One TEST_ daily site report was created via API and verified; left in DB (non-destructive).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: EXPO_PUBLIC_BACKEND_URL=https://regal-project-hub.preview.emergentagent.com. Project id: villa-aurelia-12. Use admin@regalpark.com / Admin@123 for full access. Profile menu testIDs are 'menu-<label slug with spaces and & replaced by ->' — e.g. 'menu-boq-cost-control', 'menu-contractor-billing', 'menu-team-responsibility', 'menu-client-portal'. Site tab testIDs: site-tab-logs|quality|snags, add-site-report, submit-report. Project detail tabs: tab-timeline|team|boq. Pytest file: /app/backend/tests/test_regal_park_api.py — run with: pytest /app/backend/tests/test_regal_park_api.py -v.",
+  "rca_of_issue": "No bugs found requiring RCA."
+}
