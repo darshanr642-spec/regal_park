@@ -52,13 +52,21 @@ async def get_project(project_id: str, user: User = Depends(get_current_user)):
 # ---- Dashboard ----
 @router.get("/dashboard/summary")
 async def dashboard_summary(user: User = Depends(require_internal)):
-    projects = await db.projects.find({}, {"_id": 0}).to_list(100)
-    stages = await db.stages.find({}, {"_id": 0}).to_list(500)
-    bills = await db.bills.find({}, {"_id": 0}).to_list(500)
-    quality = await db.quality.find({}, {"_id": 0}).to_list(500)
-    snags = await db.snags.find({}, {"_id": 0}).to_list(500)
-    materials = await db.materials.find({}, {"_id": 0}).to_list(500)
-    approvals = await db.approvals.find({}, {"_id": 0}).to_list(500)
+    projects = await db.projects.find(
+        {}, {"_id": 0, "budget_inr": 1, "actual_spent_inr": 1, "progress_pct": 1, "status": 1}
+    ).to_list(100)
+    stages = await db.stages.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "status": 1, "order": 1, "progress_pct": 1}
+    ).to_list(500)
+    bills = await db.bills.find(
+        {}, {"_id": 0, "payment_status": 1, "net_payable_inr": 1}
+    ).to_list(500)
+    quality = await db.quality.find({}, {"_id": 0, "result": 1}).to_list(500)
+    snags = await db.snags.find({}, {"_id": 0, "status": 1}).to_list(500)
+    materials = await db.materials.find(
+        {}, {"_id": 0, "received_qty": 1, "required_qty": 1}
+    ).to_list(500)
+    approvals = await db.approvals.find({}, {"_id": 0, "status": 1}).to_list(500)
 
     total_budget = sum(p["budget_inr"] for p in projects)
     total_spent = sum(p["actual_spent_inr"] for p in projects)
@@ -103,9 +111,16 @@ async def dashboard_summary(user: User = Depends(require_internal)):
 # ---- Domain lists (filter by project_id) ----
 def _project_router(coll_name: str, model, dep=None):
     dep = dep or get_current_user
-    async def lister(project_id: Optional[str] = None, user: User = Depends(dep)):
+    async def lister(
+        project_id: Optional[str] = None,
+        limit: int = 500,
+        skip: int = 0,
+        user: User = Depends(dep),
+    ):
+        limit = max(1, min(limit, 500))
+        skip = max(0, skip)
         q = {"project_id": project_id} if project_id else {}
-        rows = await db[coll_name].find(q, {"_id": 0}).to_list(500)
+        rows = await db[coll_name].find(q, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
         if coll_name == "stages":
             rows.sort(key=lambda r: r.get("order", 0))
         return [model(**r) for r in rows]
