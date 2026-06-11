@@ -14,11 +14,12 @@ from routes import (
     core,
     documents,
     files,
+    plots,
     procurement,
     reports_pdf,
     workflow,
 )
-from seed import migrate_base64_to_gridfs, seed_db, seed_v2
+from seed import migrate_base64_to_gridfs, seed_db, seed_plots, seed_v2
 
 app = FastAPI(title="Regal Park Villas API")
 api = APIRouter(prefix="/api")
@@ -36,6 +37,7 @@ api.include_router(files.router)
 api.include_router(procurement.router)
 api.include_router(workflow.router)
 api.include_router(checklists.router)
+api.include_router(plots.router)
 api.include_router(reports_pdf.router)
 
 app.include_router(api)
@@ -54,6 +56,7 @@ async def on_startup():
     try:
         await seed_db()
         await seed_v2()
+        await seed_plots()
         await migrate_base64_to_gridfs()
     except Exception as e:
         log.exception("Startup seed/migration failed: %s", e)

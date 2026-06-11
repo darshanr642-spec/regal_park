@@ -524,6 +524,60 @@ async def seed_v2():
 
 DATA_URI_RE = re.compile(r"^data:(.+?);base64,(.+)$", re.DOTALL)
 
+# ---- v3: Layout plan plots (251 villas, 4 elevation models) ----
+# Default elevation mapping derived from dimension clusters on the layout PDF
+# (9.14x15.24m = 30x50 for 218-251; 12.19x15.24m = 40x50 around 100-150).
+# Replace with the client's final plot->elevation list when provided.
+ELEVATION_DIMENSIONS = {
+    "Elora": "40 x 50",
+    "Selora": "35 x 55",
+    "Avira": "35 x 50",
+    "Riora": "30 x 50",
+}
+
+
+def _villa_type_for_plot(n: int) -> str:
+    if 218 <= n <= 251:
+        return "Riora"
+    if 100 <= n <= 150:
+        return "Elora"
+    if 151 <= n <= 217:
+        return "Selora" if n % 5 == 0 else "Avira"
+    # plots 1-99: balanced mix
+    return ["Avira", "Elora", "Selora", "Avira"][n % 4]
+
+
+PLOT_PROJECT_LINKS = {
+    12: "villa-aurelia-12",
+    8: "villa-celeste-08",
+    5: "villa-meridian-05",
+}
+
+
+async def seed_plots():
+    if await db.plots.count_documents({}) > 0:
+        return
+    docs = []
+    for n in range(1, 252):
+        vtype = _villa_type_for_plot(n)
+        project_id = PLOT_PROJECT_LINKS.get(n)
+        if project_id:
+            status_v = "UNDER_CONSTRUCTION"
+        elif n % 7 in (0, 1):
+            status_v = "SOLD"
+        else:
+            status_v = "AVAILABLE"
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "plot_no": n,
+            "villa_type": vtype,
+            "dimension_ft": ELEVATION_DIMENSIONS[vtype],
+            "status": status_v,
+            "project_id": project_id,
+        })
+    await db.plots.insert_many(docs)
+    log.info("Seed v3: %d layout plots.", len(docs))
+
 
 async def _store_data_uri(data_uri: str, name: str):
     m = DATA_URI_RE.match(data_uri)

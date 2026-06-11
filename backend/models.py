@@ -231,6 +231,15 @@ class Approval(BaseModel):
     date: Optional[str] = None
 
 
+class Plot(BaseModel):
+    id: str
+    plot_no: int
+    villa_type: str  # Elora / Selora / Avira / Riora
+    dimension_ft: str  # e.g. "40 x 50"
+    status: str  # AVAILABLE / SOLD / UNDER_CONSTRUCTION / COMPLETED
+    project_id: Optional[str] = None
+
+
 # ---- Procurement: Purchase Orders ----
 class POHistoryEntry(BaseModel):
     status: str

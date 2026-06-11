@@ -32,6 +32,13 @@ Mobile-first construction management app for ₹4 Cr luxury villa projects (Expo
 - Profile: removed "Regal Park Developers" company line
 - UX: pull-to-refresh added to Projects, Procurement, Approvals and all module screens (Dashboard/Site already had it)
 
+### Session 2 — Layout Plan module (2026-06-11)
+- Dashboard "LAYOUT PLAN" banner → `/layout-plan` screen: 22-acre master plan image (from client PDF, bundled at `assets/images/layout-plan.jpg` + preview), fullscreen zoomable viewer, elevation model legend with counts, plot number search, filterable 251-plot grid (status-coloured)
+- Plot detail `/plot/{no}`: elevation model card (name/dimension/status), linked project progress + OPEN PROJECT (plots 12/8/5 → Aurelia/Celeste/Meridian), 23 construction phases timeline (live stages if linked, standard NOT_STARTED template otherwise)
+- Backend: `plots` collection (251 seeded), GET /api/plots, GET /api/plots/{plot_no}
+- 4 elevation models: Elora 40×50 · Selora 35×55 · Avira 35×50 · Riora 30×50
+- ⚠️ Per-plot elevation mapping is a DEFAULT (derived from PDF dimension clusters: 218-251 Riora, 100-150 Elora, mix elsewhere) — replace `_villa_type_for_plot` in seed.py when client provides the final plot→elevation list
+
 ## Architecture
 - Backend: FastAPI, Motor + GridFS, PyJWT, bcrypt, reportlab · routes under `/api` · port 8001
 - Frontend: Expo (file-based routing), Context (auth/project), `fileUri()` helper appends token to GridFS URLs

@@ -147,6 +147,10 @@ export const api = {
     request<any>(`/stage-checklists/${cid}/items/${itemId}`, { method: "PATCH", body }),
   signOffChecklist: (cid: string) =>
     request<any>(`/stage-checklists/${cid}/sign-off`, { method: "POST" }),
+
+  // Layout plan plots
+  plots: () => request<any[]>("/plots"),
+  plot: (plotNo: number) => request<any>(`/plots/${plotNo}`),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

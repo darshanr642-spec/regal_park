@@ -132,6 +132,22 @@ export default function Dashboard() {
           </Pressable>
         )}
 
+        {/* Layout plan banner */}
+        <Pressable
+          testID="layout-plan-banner"
+          style={styles.layoutBanner}
+          onPress={() => router.push("/layout-plan" as any)}
+        >
+          <View style={styles.layoutIcon}>
+            <Feather name="map" size={18} color={colors.brandSecondary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.layoutTitle}>LAYOUT PLAN</Text>
+            <Text style={styles.layoutSub}>22-Acre Master Plan · 251 Villas · 4 Elevations</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.brandSecondary} />
+        </Pressable>
+
         {data && (
           <View style={styles.kpiGrid}>
             {kpis.map((k) => (
@@ -193,6 +209,10 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.lg, paddingTop: spacing.md },
   hello: { color: colors.muted, fontSize: 12, letterSpacing: 1.5 },
+  layoutBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.lg, marginBottom: spacing.lg, backgroundColor: colors.surfaceInverse, borderRadius: radii.md, padding: spacing.lg, ...shadow.card },
+  layoutIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(212,175,55,0.14)" },
+  layoutTitle: { color: colors.brandSecondary, fontSize: 12, letterSpacing: 2.5, fontWeight: "700" },
+  layoutSub: { color: "rgba(255,255,255,0.65)", fontSize: 11, marginTop: 2 },
   userName: { fontFamily: font.display, fontSize: 26, color: colors.onSurface, marginTop: 2 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   avatarText: { fontFamily: font.display, color: colors.onBrandTertiary, fontWeight: "700", letterSpacing: 1 },
