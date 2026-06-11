@@ -45,7 +45,6 @@ export function BrandSplash() {
           style={styles.logo}
           contentFit="contain"
         />
-        <Text style={styles.brand}>STERLITEE</Text>
         <Text style={styles.sub}>DEVELOPERS LLP · REGAL PARK VILLAS</Text>
       </Animated.View>
     </Animated.View>
@@ -61,7 +60,6 @@ const styles = StyleSheet.create({
     zIndex: 999,
     elevation: 999,
   },
-  logo: { width: 180, height: 165 },
-  brand: { color: "#D4AF37", fontSize: 24, letterSpacing: 10, marginTop: 18, fontWeight: "600" },
-  sub: { color: "rgba(212,175,55,0.65)", fontSize: 10, letterSpacing: 3, marginTop: 8 },
+  logo: { width: 200, height: 184 },
+  sub: { color: "rgba(212,175,55,0.75)", fontSize: 11, letterSpacing: 3, marginTop: 16 },
 });

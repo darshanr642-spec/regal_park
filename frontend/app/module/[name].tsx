@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
@@ -40,6 +40,8 @@ export default function Module() {
   const [docTotal, setDocTotal] = useState(0);
   const [docHasMore, setDocHasMore] = useState(false);
   const [docLoadingMore, setDocLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const title = TITLES[name as string] || "Module";
   const isClient = user?.role === "CLIENT";
@@ -51,7 +53,7 @@ export default function Module() {
       api.documents(project.id, 20, 0)
         .then((res) => { setRows(res.items); setDocTotal(res.total); setDocHasMore(res.has_more); })
         .catch(() => { setRows([]); setDocHasMore(false); })
-        .finally(() => setLoading(false));
+        .finally(() => { setLoading(false); setRefreshing(false); });
       return;
     }
     const fn =
@@ -61,8 +63,8 @@ export default function Module() {
       name === "reports" ? () => Promise.resolve([]) :
       name === "client" ? () => api.stages(project.id) :
       () => api.stages(project.id);
-    fn().then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
-  }, [name, project]);
+    fn().then(setRows).catch(() => setRows([])).finally(() => { setLoading(false); setRefreshing(false); });
+  }, [name, project, refreshKey]);
 
   const loadMoreDocs = async () => {
     if (!project || docLoadingMore || !docHasMore) return;
@@ -152,7 +154,7 @@ export default function Module() {
     } catch {}
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
+  if (loading && !refreshing) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -190,7 +192,10 @@ export default function Module() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setRefreshKey((k) => k + 1); }} />}
+      >
         {/* PDF Reports module */}
         {name === "reports" && REPORT_KINDS.map((r) => (
           <Pressable key={r.kind} testID={`report-${r.kind}`} style={styles.card} onPress={() => openReport(r.kind)} disabled={busyKind !== null}>

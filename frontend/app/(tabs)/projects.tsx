@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,10 +13,16 @@ export default function Projects() {
   const router = useRouter();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    api.projects().then((p) => { setProjects(p); setLoading(false); }).catch(() => setLoading(false));
+  const load = useCallback(() => {
+    api.projects()
+      .then(setProjects)
+      .catch(() => {})
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
 
@@ -31,6 +37,7 @@ export default function Projects() {
         data={projects}
         keyExtractor={(p) => p.id}
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
         renderItem={({ item }) => (
           <Pressable
             testID={`project-card-${item.id}`}

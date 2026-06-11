@@ -10,7 +10,7 @@ export function Watermark() {
   return (
     <View pointerEvents="none" style={styles.wrap} testID="brand-watermark">
       <Image
-        source={require("@/assets/brand/sterlitee-mark.png")}
+        source={require("@/assets/brand/regalpark-mark.png")}
         style={styles.img}
         contentFit="contain"
       />
@@ -24,5 +24,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  img: { width: 300, height: 275, opacity: 0.05 },
+  img: { width: 320, height: 172, opacity: 0.06 },
 });

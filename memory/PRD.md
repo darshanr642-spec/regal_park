@@ -26,6 +26,12 @@ Mobile-first construction management app for ₹4 Cr luxury villa projects (Expo
 - **Sterlitee logo branding**: animated BrandSplash at app start (plays once per session), Watermark component on all screens, logo on login, app icons/splash assets regenerated (navy #151547), logo embedded in PDF report headers
 - Client profile menu filtered (Team/Approvals/Documents/Client Portal only)
 
+### Session 2 polish round (2026-06-11, user feedback)
+- Splash: removed duplicate "STERLITEE" text (name now appears once, inside logo)
+- Background watermark on all pages switched to the new **Regal Park** logo (`assets/brand/regalpark-mark.png`); splash/login keep Sterlitee logo
+- Profile: removed "Regal Park Developers" company line
+- UX: pull-to-refresh added to Projects, Procurement, Approvals and all module screens (Dashboard/Site already had it)
+
 ## Architecture
 - Backend: FastAPI, Motor + GridFS, PyJWT, bcrypt, reportlab · routes under `/api` · port 8001
 - Frontend: Expo (file-based routing), Context (auth/project), `fileUri()` helper appends token to GridFS URLs

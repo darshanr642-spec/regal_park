@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -40,6 +40,7 @@ export default function Procurement() {
   const [orders, setOrders] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [err, setErr] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export default function Procurement() {
       setMaterials(mats);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [project]);
 
@@ -139,7 +141,10 @@ export default function Procurement() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+      >
         {tab === "ORDERS" && (
           <>
             {canRequest && !showForm && (

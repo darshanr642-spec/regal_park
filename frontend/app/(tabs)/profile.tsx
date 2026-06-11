@@ -35,7 +35,6 @@ export default function Profile() {
             <Text style={styles.roleTxt}>{user?.role.replace(/_/g, " ")}</Text>
           </View>
           <Text style={styles.email}>{user?.email}</Text>
-          {user?.company && <Text style={styles.company}>{user.company}</Text>}
         </View>
 
         <Text style={styles.sectionHead}>MODULES</Text>
@@ -76,7 +75,6 @@ const styles = StyleSheet.create({
   rolePill: { marginTop: spacing.sm, backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radii.pill },
   roleTxt: { color: colors.onBrandTertiary, fontSize: 10, letterSpacing: 1.5, fontWeight: "700" },
   email: { color: colors.muted, fontSize: 12, marginTop: spacing.sm },
-  company: { color: colors.muted, fontSize: 12, marginTop: 2 },
   sectionHead: { marginTop: spacing.xxl, marginBottom: spacing.sm, color: colors.muted, fontSize: 10, letterSpacing: 2 },
   row: { flexDirection: "row", alignItems: "center", padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm },
   rowIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary, marginRight: spacing.md },
