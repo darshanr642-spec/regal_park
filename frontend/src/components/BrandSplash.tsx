@@ -45,7 +45,8 @@ export function BrandSplash() {
           style={styles.logo}
           contentFit="contain"
         />
-        <Text style={styles.sub}>DEVELOPERS LLP · REGAL PARK VILLAS</Text>
+        <Text style={styles.sub} testID="splash-developers-llp">DEVELOPERS LLP</Text>
+        <Text style={styles.subSecondary} testID="splash-regal-park-villas">REGAL PARK VILLAS</Text>
       </Animated.View>
     </Animated.View>
   );
@@ -61,5 +62,6 @@ const styles = StyleSheet.create({
     elevation: 999,
   },
   logo: { width: 200, height: 184 },
-  sub: { color: "rgba(212,175,55,0.75)", fontSize: 11, letterSpacing: 3, marginTop: 16 },
+  sub: { color: "rgba(212,175,55,0.85)", fontSize: 13, letterSpacing: 4, marginTop: 16 },
+  subSecondary: { color: "rgba(212,175,55,0.6)", fontSize: 11, letterSpacing: 3, marginTop: 10 },
 });
