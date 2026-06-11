@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
+import { Watermark } from "@/src/components/Watermark";
 import { colors, font, formatINR, radii, shadow, spacing } from "@/src/lib/theme";
 
 export default function Projects() {
@@ -21,6 +22,7 @@ export default function Projects() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Watermark />
       <View style={styles.header}>
         <Text style={styles.title}>Projects</Text>
         <Text style={styles.sub}>{projects.length} active villas</Text>

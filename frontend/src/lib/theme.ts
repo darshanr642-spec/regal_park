@@ -70,10 +70,10 @@ export function formatINR(n: number): string {
 
 export function statusColor(s: string) {
   const v = (s || "").toUpperCase();
-  if (["COMPLETED", "PASS", "APPROVED", "PAID", "RESOLVED"].includes(v))
+  if (["COMPLETED", "PASS", "APPROVED", "PAID", "RESOLVED", "DELIVERED"].includes(v))
     return colors.success;
-  if (["IN_PROGRESS", "PARTIAL", "SUBMITTED"].includes(v)) return colors.brand;
-  if (["DELAYED", "FAIL", "OPEN"].includes(v)) return colors.error;
-  if (["PENDING", "NOT_STARTED"].includes(v)) return colors.muted;
+  if (["IN_PROGRESS", "PARTIAL", "SUBMITTED", "ORDERED"].includes(v)) return colors.brand;
+  if (["DELAYED", "FAIL", "OPEN", "CANCELLED", "REJECTED"].includes(v)) return colors.error;
+  if (["PENDING", "NOT_STARTED", "REQUESTED"].includes(v)) return colors.muted;
   return colors.info;
 }

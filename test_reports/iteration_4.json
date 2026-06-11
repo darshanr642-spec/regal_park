@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 4 testing complete (backend + frontend). Backend: 38/38 pytest cases PASS in /app/backend/tests/test_iteration4.py — covers (a) Procurement PO lifecycle: GET /api/purchase-orders admin sees 5+ seeded POs and client 403, POST creates REQUESTED PO with auto po_number PO-RPV-### + correct total_inr, PATCH /transition full chain approve→order→deliver works with proper role gating (SITE_ENGINEER 403 on approve, PROCUREMENT_MANAGER ok on order/deliver), invalid skip (order from REQUESTED) returns 409, terminal DELIVERED rejects further transitions with 409; (b) Approval workflow: admin sees all 4+ seeded, client sees ONLY assignee_role=CLIENT (Sanitaryware PENDING), admin POST creates PENDING, client decides own CLIENT-assigned (APPROVED), client blocked 403 on internal-assigned request, deciding already-decided returns 409; (c) Stage checklists: GET /checklist-templates returns 8 templates for admin (403 for client), GET /stage-checklists returns Foundation signed_off=true + Masonry mixed (signed_off=false), POST instantiates from 'Slab' template, duplicate returns 409, PATCH item toggles status, signed-off checklist locks items (409), sign-off with non-PASS items returns 409, client 403 on item patch + sign-off, full PASS flow then sign-off succeeds; (d) GridFS files: POST /api/files admin upload returns {id,url,content_type,size}, client 403; GET /api/files/{id}?token=JWT returns 200 with content-type, no token returns 401, header-bearer auth also accepted (client can read); (e) GET /api/documents items contain file_url=/api/files/... and NO file_data base64 (migration verified); (f) Regression: dashboard summary 200, client 403 on boq/billing, team PII scrubbed for client (phone='—' email='—'), /api/reports/progress returns application/pdf. Backend stable, no 500s. Frontend (Expo web preview at 390x844): BrandSplash fades (~2.4s) and does NOT replay after login; admin login → dashboard shows Villa Aurelia + watermark visible; Profile → Procurement screen has ORDERS/MATERIALS tabs, PO cards (PO-RPV-###) with APPROVE / MARK ORDERED / MARK DELIVERED / CANCEL / RAISE PURCHASE ORDER affordances; Profile → Approvals shows AWAITING YOUR DECISION (Sanitaryware), WORKFLOW REQUESTS section, NEW APPROVAL REQUEST form, STATUTORY & AUTHORITY APPROVALS (Plan Sanction / BESCOM / BWSSB / Fire NOC); Site tab → QUALITY (via testID site-tab-quality) shows STAGE CHECKLISTS section with Foundation (SIGNED OFF), Masonry (3/5 PASS + 'ALL ITEMS MUST PASS' warning), Slab (newly added & SIGNED OFF by iter4 test), NEW STAGE CHECKLIST button reveals 5 remaining template chips, AD-HOC QUALITY CHECKS section below; LOGS report photos load as GridFS streaming URLs (https://.../api/files/{id}?token=...) and lightbox opens on tap; client login menu shows ONLY 4 items (Team / Approvals / Documents / Client Portal), no BOQ/Procurement/Billing/PDF Reports; Approvals screen for client shows Sanitaryware pending with APPROVE/REJECT buttons and no NEW APPROVAL REQUEST form (correctly hidden). All iter4 acceptance criteria pass. No new regressions. No deprecated Expo packages detected (expo-av/expo-barcode-scanner/expo-background-fetch absent). RN-Web console warnings (shadow*, props.pointerEvents) are pre-existing carry-over from iter2/iter3.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Global",
+        "issues": [
+          "Pre-existing console warnings: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated (use style.pointerEvents) — non-blocking, carried over from iter2/iter3."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iteration4_results.xml"
+  ],
+  "action_items": [
+    "Optional: replace remaining shadow* style props with boxShadow and props.pointerEvents → style.pointerEvents to silence pre-existing RN-Web deprecation warnings (cosmetic).",
+    "Note for future testing agents: the Site segmented tabs (LOGS/QUALITY/SNAGS) have testIDs site-tab-logs / site-tab-quality / site-tab-snags — use those instead of text= selectors (text fallback was intercepted by an overlay during initial test attempts)."
+  ],
+  "critical_code_review_comments": [
+    "routes/procurement.py — clean state-machine; transitions table is the single source of truth, role gating before status check ensures consistent 403 vs 409 ordering.",
+    "routes/workflow.py — CLIENT visibility correctly enforced server-side via q['assignee_role']='CLIENT' filter; decide endpoint requires role match OR admin override (sane).",
+    "routes/checklists.py — sign-off correctly requires all PASS; items locked after sign-off via cl.get('signed_off') check; uses MongoDB positional $ operator for safe item-level updates.",
+    "routes/files.py — uses gridfs-AsyncIOMotorGridFSBucket open_download_stream + readchunk for true streaming; 15 MB cap server-side; get_user_flexible accepts header OR ?token= query param (essential for <img src> and PDF previews in RN-Web).",
+    "routes/documents.py — DELETE best-effort cleans up GridFS blob (ObjectId derived from file_url tail), error swallowed correctly.",
+    "seed.py migrate_base64_to_gridfs is idempotent (matches $regex ^data:); leaves new docs alone — safe to re-run.",
+    "auth_utils.py RBAC role groups are explicit and reusable; PO_*/CHECKLIST_SIGNOFF_ROLES/WRITE_QUALITY_ROLES sets cleanly encode policy.",
+    "models.py — Pydantic v1 BaseModel still used (.dict()); fine for current FastAPI but consider migrating to v2 (.model_dump()) for forward-compat.",
+    "server.py is now thin (delegates to routes/*) — earlier 1200-line concern from iter3 is resolved."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py (new — 38 pytest cases)",
+    "/app/test_reports/pytest/iteration4_results.xml (new)",
+    "/app/test_reports/iteration_4.json (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (38/38 iteration_4 tests)",
+    "frontend": "100% on all iter4 acceptance criteria (BrandSplash fade, watermark, Procurement lifecycle UI, Approvals AWAITING+WORKFLOW+STATUTORY sections, Site QUALITY stage checklists with templates & sign-off badges, GridFS photo streaming + lightbox, client RBAC menu trimmed to 4 items, client can decide Sanitaryware request)"
+  },
+  "seed_data_creation": "No new seed required — backend auto-seeds 5 POs / 4 approval requests / 8 templates / 2 stage checklists on first run. Tests created (and left in DB as harmless TEST_iter4-prefixed records): 1 PO (delivered chain) + 1 approval request (approved by client) + 1 stage checklist for 'Slab' (signed off). Cleanup endpoints not available — payloads small and prefixed for easy identification.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest /app/backend/tests/test_iteration4.py -v. Key testIDs: site-tab-{logs,quality,snags}; menu-procurement / menu-approvals; add-checklist-button; template-{stage-name-lowercased-hyphenated}; checklist-{id}; checklist-item-{id}; signoff-{id}; stage-checklists-section; report-photo-{id}-{idx}; snag-photo-{id}-{idx}; lightbox / lightbox-close. GridFS image URLs include a ?token= query param appended client-side via fileUri helper — this is required because <img src> cannot send Authorization header. Procurement PO state machine: REQUESTED→APPROVED→ORDERED→DELIVERED with separate CANCEL terminal; PO_APPROVE_ROLES={ADMIN,PROJECT_DIRECTOR,PROJECT_MANAGER} (note: SITE_ENGINEER can REQUEST but not APPROVE), PO_ORDER_ROLES={ADMIN,PROCUREMENT_MANAGER}, PO_DELIVER_ROLES adds SITE_ENGINEER & STORE_KEEPER. Checklist sign-off restricted to ADMIN/PROJECT_MANAGER/QUANTITY_SURVEYOR; only WRITE_QUALITY_ROLES can toggle items. CLIENT cannot list templates (require_internal).",
+  "rca_of_issue": "N/A — no failing tests this iteration. (Minor test-script learning: clicking the Site tab QUALITY via page.get_by_text('QUALITY') without exact-match testID may not switch tabs because nested text descendants intercept the click; always prefer [data-testid=\"site-tab-quality\"].)"
+}

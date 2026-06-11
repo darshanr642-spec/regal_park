@@ -5,18 +5,18 @@ import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api, downloadReportPdf, API_BASE, getToken } from "@/src/lib/api";
+import { api, downloadReportPdf, API_BASE, getToken, fileUri } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 import { useProject } from "@/src/lib/project";
 import { pickDocument } from "@/src/lib/uploads";
+import { Watermark } from "@/src/components/Watermark";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
+// NOTE: procurement & approvals have dedicated screens (procurement.tsx / approvals.tsx)
 const TITLES: Record<string, string> = {
   boq: "BOQ & Cost Control",
-  procurement: "Procurement",
   billing: "Contractor Billing",
   team: "Team & Responsibility",
-  approvals: "Approvals",
   documents: "Documents & Drawings",
   reports: "PDF Reports",
   client: "Client Portal View",
@@ -56,10 +56,8 @@ export default function Module() {
     }
     const fn =
       name === "boq" ? () => api.boq(project.id) :
-      name === "procurement" ? () => api.materials(project.id) :
       name === "billing" ? () => api.billing(project.id) :
       name === "team" ? () => api.team(project.id) :
-      name === "approvals" ? () => api.approvals(project.id) :
       name === "reports" ? () => Promise.resolve([]) :
       name === "client" ? () => api.stages(project.id) :
       () => api.stages(project.id);
@@ -115,14 +113,14 @@ export default function Module() {
 
   const uploadDoc = async () => {
     if (!project) return;
-    const picked = await pickDocument();
-    if (!picked) return;
     try {
+      const picked = await pickDocument();
+      if (!picked) return;
       const created = await api.createDocument({
         project_id: project.id,
         title: picked.name,
         category: "OTHER",
-        file_data: picked.dataUri,
+        file_url: picked.url,
         file_name: picked.name,
       });
       setRows([created, ...rows]);
@@ -130,19 +128,19 @@ export default function Module() {
   };
 
   const openDoc = async (d: any) => {
+    const url = fileUri(d.file_url);
+    if (!url) return;
     if (Platform.OS === "web") {
-      window.open(d.file_data, "_blank");
+      window.open(url, "_blank");
       return;
     }
     try {
-      // strip data URI prefix
-      const m = d.file_data.match(/^data:(.+);base64,(.+)$/);
-      if (!m) return;
-      const ext = (m[1].split("/")[1] || "bin").split(";")[0];
-      const fileUri = `${FileSystem.cacheDirectory}${d.file_name || "document"}.${ext}`;
-      await FileSystem.writeAsStringAsync(fileUri, m[2], { encoding: FileSystem.EncodingType.Base64 });
+      const target = `${FileSystem.cacheDirectory}${d.file_name || "document"}`;
+      const dl = await FileSystem.downloadAsync(url, target);
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { mimeType: m[1] });
+        await Sharing.shareAsync(dl.uri);
+      } else {
+        await Linking.openURL(dl.uri);
       }
     } catch {}
   };
@@ -158,6 +156,7 @@ export default function Module() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Watermark />
       <View style={styles.header}>
         <Pressable testID="back-button" onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={colors.onSurface} />
@@ -281,29 +280,6 @@ export default function Module() {
             </View>
           </View>
         ))}
-
-        {/* Procurement */}
-        {name === "procurement" && rows.map((m) => {
-          const pct = m.required_qty ? Math.round((m.received_qty / m.required_qty) * 100) : 0;
-          return (
-            <View key={m.id} style={styles.card} testID={`material-${m.id}`}>
-              <View style={styles.cardHead}>
-                <Text style={styles.itemDesc}>{m.name}</Text>
-                <View style={[styles.statusPill, { borderColor: statusColor(m.payment_status) }]}>
-                  <Text style={[styles.statusPillText, { color: statusColor(m.payment_status) }]}>{m.payment_status}</Text>
-                </View>
-              </View>
-              <Text style={styles.cardMeta}>{m.supplier} · PO {m.po_number}</Text>
-              <View style={styles.cardKvs}>
-                <View style={styles.kv}><Text style={styles.kvLbl}>REQUIRED</Text><Text style={styles.kvVal}>{m.required_qty} {m.unit}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>RECEIVED</Text><Text style={styles.kvVal}>{m.received_qty} {m.unit}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>DELIVERY</Text><Text style={styles.kvVal}>{m.delivery_date}</Text></View>
-                <View style={styles.kv}><Text style={styles.kvLbl}>FULFILLED</Text><Text style={styles.kvVal}>{pct}%</Text></View>
-              </View>
-              <View style={styles.bar}><View style={[styles.barFill, { width: `${pct}%` }]} /></View>
-            </View>
-          );
-        })}
 
         {/* Billing */}
         {name === "billing" && rows.map((b) => (

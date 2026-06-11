@@ -63,7 +63,11 @@ export default function Login() {
         >
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
             <View style={styles.brandBlock}>
-              <Text style={styles.brandMark}>RP</Text>
+              <Image
+                source={require("@/assets/brand/sterlitee-mark.png")}
+                style={styles.brandLogo}
+                contentFit="contain"
+              />
               <Text style={styles.brandName}>REGAL PARK VILLAS</Text>
               <Text style={styles.brandTag}>Turnkey luxury villa management</Text>
               <Text style={styles.brandParent}>BY STERLITEE DEVELOPERS LLP</Text>
@@ -135,12 +139,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceInverse },
   scroll: { flexGrow: 1, justifyContent: "space-between", padding: spacing.xl, paddingTop: spacing.xxxl },
   brandBlock: { alignItems: "center", marginTop: spacing.xxl },
-  brandMark: {
-    fontFamily: font.display,
-    color: colors.brandSecondary,
-    fontSize: 44,
-    letterSpacing: 4,
-  },
+  brandLogo: { width: 110, height: 100 },
   brandName: {
     fontFamily: font.display,
     color: "#fff",

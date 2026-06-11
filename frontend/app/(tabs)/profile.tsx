@@ -4,26 +4,29 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth";
+import { Watermark } from "@/src/components/Watermark";
 import { colors, font, radii, shadow, spacing } from "@/src/lib/theme";
 
 const MENU = [
-  { label: "BOQ & Cost Control", icon: "list", route: "/module/boq" },
-  { label: "Procurement", icon: "truck", route: "/module/procurement" },
-  { label: "Contractor Billing", icon: "credit-card", route: "/module/billing" },
-  { label: "Team & Responsibility", icon: "users", route: "/module/team" },
-  { label: "Approvals", icon: "check-square", route: "/module/approvals" },
-  { label: "Documents & Drawings", icon: "folder", route: "/module/documents" },
-  { label: "PDF Reports", icon: "file-text", route: "/module/reports" },
-  { label: "Client Portal View", icon: "key", route: "/module/client" },
+  { label: "BOQ & Cost Control", icon: "list", route: "/module/boq", internal: true },
+  { label: "Procurement", icon: "truck", route: "/module/procurement", internal: true },
+  { label: "Contractor Billing", icon: "credit-card", route: "/module/billing", internal: true },
+  { label: "Team & Responsibility", icon: "users", route: "/module/team", internal: false },
+  { label: "Approvals", icon: "check-square", route: "/module/approvals", internal: false },
+  { label: "Documents & Drawings", icon: "folder", route: "/module/documents", internal: false },
+  { label: "PDF Reports", icon: "file-text", route: "/module/reports", internal: true },
+  { label: "Client Portal View", icon: "key", route: "/module/client", internal: false },
 ];
 
 export default function Profile() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const initials = (user?.full_name || "RP").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
+  const menu = user?.role === "CLIENT" ? MENU.filter((m) => !m.internal) : MENU;
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Watermark />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
         <View style={styles.profileCard} testID="profile-card">
           <View style={styles.avatar}><Text style={styles.avatarTxt}>{initials}</Text></View>
@@ -36,7 +39,7 @@ export default function Profile() {
         </View>
 
         <Text style={styles.sectionHead}>MODULES</Text>
-        {MENU.map((m) => (
+        {menu.map((m) => (
           <Pressable
             key={m.label}
             testID={`menu-${m.label.replace(/[\s&]+/g, "-").toLowerCase()}`}

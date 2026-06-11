@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
+import { Watermark } from "@/src/components/Watermark";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 type Tab = "TIMELINE" | "TEAM" | "BOQ";
@@ -33,6 +34,7 @@ export default function ProjectDetail() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Watermark />
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }} stickyHeaderIndices={[1]}>
         {/* Hero */}
         <View style={styles.hero}>

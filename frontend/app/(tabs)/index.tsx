@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 import { useProject } from "@/src/lib/project";
+import { Watermark } from "@/src/components/Watermark";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 
 export default function Dashboard() {
@@ -61,6 +62,7 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <Watermark />
       <ScrollView
         contentContainerStyle={{ paddingBottom: spacing.xxxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}

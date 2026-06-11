@@ -3,13 +3,30 @@ import { storage } from "@/src/utils/storage";
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = "rpv_token";
 
+let cachedToken: string | null = null;
+
 export async function getToken(): Promise<string | null> {
-  return (await storage.secureGet<string>(TOKEN_KEY, "")) || null;
+  if (cachedToken) return cachedToken;
+  cachedToken = (await storage.secureGet<string>(TOKEN_KEY, "")) || null;
+  return cachedToken;
 }
 
 export async function setToken(t: string | null) {
+  cachedToken = t;
   if (!t) await storage.secureRemove(TOKEN_KEY);
   else await storage.secureSet(TOKEN_KEY, t);
+}
+
+/**
+ * Resolve a stored file path ("/api/files/{id}") into a fetchable URL,
+ * appending the auth token as a query param (Image tags can't send headers on web).
+ * Legacy base64 data URIs and absolute URLs pass through untouched.
+ */
+export function fileUri(p?: string | null): string {
+  if (!p) return "";
+  if (p.startsWith("data:") || p.startsWith("http")) return p;
+  const sep = p.includes("?") ? "&" : "?";
+  return `${BASE}${p}${sep}token=${cachedToken || ""}`;
 }
 
 async function request<T>(
@@ -29,6 +46,25 @@ async function request<T>(
   });
   if (!res.ok) {
     let detail = `${res.status}`;
+    try {
+      const j = await res.json();
+      detail = j.detail || detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+/** Multipart upload to GridFS-backed storage. Returns { id, url } where url = /api/files/{id}. */
+export async function uploadFile(form: FormData): Promise<{ id: string; url: string; content_type: string; size: number }> {
+  const tok = await getToken();
+  const res = await fetch(`${BASE}/api/files`, {
+    method: "POST",
+    headers: tok ? { Authorization: `Bearer ${tok}` } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `Upload failed (${res.status})`;
     try {
       const j = await res.json();
       detail = j.detail || detail;
@@ -84,10 +120,33 @@ export const api = {
     request<any>(`/quality/${id}`, { method: "PATCH", body }),
   patchSnag: (id: string, body: any) =>
     request<any>(`/snags/${id}`, { method: "PATCH", body }),
-  reportPdfUrl: async (kind: string, projectId: string) => {
-    const tok = await getToken();
-    return `${BASE}/api/reports/${kind}?project_id=${projectId}&token=${tok}`;
-  },
+
+  // Procurement — purchase orders
+  purchaseOrders: (projectId?: string) =>
+    request<any[]>(`/purchase-orders${projectId ? `?project_id=${projectId}` : ""}`),
+  createPurchaseOrder: (body: any) =>
+    request<any>("/purchase-orders", { method: "POST", body }),
+  transitionPurchaseOrder: (id: string, action: string, note?: string) =>
+    request<any>(`/purchase-orders/${id}/transition`, { method: "PATCH", body: { action, note } }),
+
+  // Approval workflow
+  approvalRequests: (projectId?: string) =>
+    request<any[]>(`/approval-requests${projectId ? `?project_id=${projectId}` : ""}`),
+  createApprovalRequest: (body: any) =>
+    request<any>("/approval-requests", { method: "POST", body }),
+  decideApprovalRequest: (id: string, decision: string, note?: string) =>
+    request<any>(`/approval-requests/${id}/decide`, { method: "PATCH", body: { decision, note } }),
+
+  // Stage quality checklists
+  checklistTemplates: () => request<any[]>("/checklist-templates"),
+  stageChecklists: (projectId?: string) =>
+    request<any[]>(`/stage-checklists${projectId ? `?project_id=${projectId}` : ""}`),
+  createStageChecklist: (body: { project_id: string; stage_name: string }) =>
+    request<any>("/stage-checklists", { method: "POST", body }),
+  patchChecklistItem: (cid: string, itemId: string, body: { status: string; remarks?: string }) =>
+    request<any>(`/stage-checklists/${cid}/items/${itemId}`, { method: "PATCH", body }),
+  signOffChecklist: (cid: string) =>
+    request<any>(`/stage-checklists/${cid}/sign-off`, { method: "POST" }),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {
