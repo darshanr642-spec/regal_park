@@ -440,12 +440,13 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
     if not lead:
         raise HTTPException(404, "Lead not found")
 
-    # Validate plot is available
+    # Validate plot is available or reserved
     plot = await db.plots.find_one({"plot_no": body.plot_no}, {"_id": 0})
     if not plot:
         raise HTTPException(404, f"Plot {body.plot_no} not found")
-    if plot["status"] not in ("AVAILABLE",):
-        raise HTTPException(409, f"Plot {body.plot_no} is not available (status: {plot['status']})")
+    current_sales = plot.get("sales_status", plot.get("status", "AVAILABLE"))
+    if current_sales not in ("AVAILABLE", "RESERVED"):
+        raise HTTPException(409, f"Plot {body.plot_no} is not available (status: {current_sales})")
 
     # Validate discount authority
     if body.discount_pct > 0 and user.role == "CRM_SALES" and body.discount_pct > 3.0:
@@ -476,10 +477,10 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
     }
     await db.bookings.insert_one({**doc, "_id": doc["id"]})
 
-    # Hold the plot
+    # Hold the plot — set sales_status to BOOKED
     await db.plots.update_one(
         {"plot_no": body.plot_no},
-        {"$set": {"status": "SOLD", "sale_value_inr": body.sale_value_inr, "sold_date": now[:10]}},
+        {"$set": {"sales_status": "BOOKED", "sale_value_inr": body.sale_value_inr, "sold_date": now[:10]}},
     )
 
     # Update lead status
@@ -539,7 +540,7 @@ async def update_booking(
             # Release the plot
             await db.plots.update_one(
                 {"plot_no": doc["plot_no"]},
-                {"$set": {"status": "AVAILABLE"}, "$unset": {"sale_value_inr": "", "sold_date": ""}},
+                {"$set": {"sales_status": "AVAILABLE"}, "$unset": {"sale_value_inr": "", "sold_date": ""}},
             )
             # Update lead status
             await db.leads.update_one(

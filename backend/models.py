@@ -491,7 +491,7 @@ class QuotationCreate(BaseModel):
 
 
 # ---- CRM: Bookings ----
-BOOKING_STATUSES = ["PROVISIONAL", "CONFIRMED", "CANCELLED"]
+BOOKING_STATUSES = ["PROVISIONAL", "APPROVED", "CONFIRMED", "CANCELLED"]
 
 
 class Booking(BaseModel):
