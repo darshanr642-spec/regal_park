@@ -122,6 +122,21 @@ export default function Profile() {
           </>
         )}
 
+        {user?.role === "ADMIN" && (
+          <>
+            <Text style={styles.sectionHead}>ADMINISTRATION</Text>
+            <Pressable
+              testID="admin-edit-center"
+              style={styles.row}
+              onPress={() => router.push("/admin/edit-center" as any)}
+            >
+              <View style={styles.rowIcon}><Feather name="sliders" size={18} color="#C5A059" /></View>
+              <Text style={styles.rowLabel}>Admin Edit Center</Text>
+              <Feather name="chevron-right" size={18} color={colors.muted} />
+            </Pressable>
+          </>
+        )}
+
         <Text style={styles.sectionHead}>ACCOUNT</Text>
         <LogoutButton />
 

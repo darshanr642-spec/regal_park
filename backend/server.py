@@ -11,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from config import ALLOWED_ORIGINS, REDIS_URL, SEED_DEMO_DATA, client, db, log
 from routes import (
+    admin,
     auth_routes,
     checklists,
     coo,
@@ -83,6 +84,7 @@ api.include_router(portal.router)
 api.include_router(coo.router)
 api.include_router(inventory.router)
 api.include_router(landowner.router)
+api.include_router(admin.router)
 
 app.include_router(api)
 

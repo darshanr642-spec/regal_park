@@ -301,6 +301,44 @@ export const api = {
 
   // Landowner Dashboard
   landownerDashboard: () => request<any>("/landowner/dashboard"),
+
+  // ── Admin Edit Center ─────────────────────────────────────────────
+  adminSummary: () => request<any>("/admin/summary"),
+  adminUsers: () => request<any[]>("/admin/users"),
+  adminPatchUser: (id: string, body: any) =>
+    request<any>(`/admin/users/${id}`, { method: "PATCH", body }),
+  adminResetPassword: (id: string, body: { temp_password: string }) =>
+    request<any>(`/admin/users/${id}/reset-password`, { method: "POST", body }),
+  adminProjects: () => request<any[]>("/admin/projects"),
+  adminPatchProject: (id: string, body: any) =>
+    request<any>(`/admin/projects/${id}`, { method: "PATCH", body }),
+  adminPlots: () => request<any[]>("/admin/plots"),
+  adminPatchPlot: (plotNo: number, body: any) =>
+    request<any>(`/admin/plots/${plotNo}`, { method: "PATCH", body }),
+  adminImportPlots: (plots: any[]) =>
+    request<any>("/admin/plots/import", { method: "POST", body: { plots } }),
+  adminBoq: () => request<any[]>("/admin/boq"),
+  adminCreateBoq: (body: any) =>
+    request<any>("/admin/boq", { method: "POST", body }),
+  adminPatchBoq: (id: string, body: any) =>
+    request<any>(`/admin/boq/${id}`, { method: "PATCH", body }),
+  adminDeleteBoq: (id: string) =>
+    request<any>(`/admin/boq/${id}`, { method: "DELETE" }),
+  adminProcurement: () => request<any[]>("/admin/procurement"),
+  adminPatchProcurement: (id: string, body: any) =>
+    request<any>(`/admin/procurement/${id}`, { method: "PATCH", body }),
+  adminTeam: () => request<any[]>("/admin/team"),
+  adminCreateTeam: (body: any) =>
+    request<any>("/admin/team", { method: "POST", body }),
+  adminPatchTeam: (id: string, body: any) =>
+    request<any>(`/admin/team/${id}`, { method: "PATCH", body }),
+  adminPricing: () => request<any[]>("/admin/pricing"),
+  adminPatchPricing: (id: string, body: any) =>
+    request<any>(`/admin/pricing/${id}`, { method: "PATCH", body }),
+  adminSettings: () => request<any>("/admin/settings"),
+  adminPatchSettings: (body: any) =>
+    request<any>("/admin/settings", { method: "PATCH", body }),
+  adminAuditLog: () => request<any[]>("/admin/audit-log"),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

@@ -67,8 +67,11 @@ const APPROVAL_ROLES = new Set([
   "ADMIN", "COO", "PROJECT_DIRECTOR", "SALES_MANAGER", "PROJECT_MANAGER",
 ]);
 
+const ADMIN_ROLES = new Set(["ADMIN"]);
+
 /** Route prefix → allowed roles. Order matters: first match wins. */
 const ZONE_GUARDS: Array<{ prefix: string; roles: Set<string> }> = [
+  { prefix: "/admin",      roles: ADMIN_ROLES },
   { prefix: "/crm",        roles: CRM_ROLES },
   { prefix: "/coo",        roles: COO_ROLES },
   { prefix: "/inventory",  roles: INVENTORY_ROLES },
