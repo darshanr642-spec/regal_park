@@ -219,6 +219,14 @@ export const api = {
     request<any>(`/crm/booking-approvals/${id}`),
   decideBookingApproval: (id: string, body: { decision: string; note?: string }) =>
     request<any>(`/crm/booking-approvals/${id}/decide`, { method: "POST", body }),
+
+  // CRM — Discount Requests
+  discountRequests: (status?: string) =>
+    request<any[]>(`/crm/discount-requests${status ? `?status=${status}` : ""}`),
+  discountRequest: (id: string) =>
+    request<any>(`/crm/discount-requests/${id}`),
+  decideDiscountRequest: (id: string, body: { decision: string; note?: string; counter_pct?: number }) =>
+    request<any>(`/crm/discount-requests/${id}/decide`, { method: "POST", body }),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

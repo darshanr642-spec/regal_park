@@ -26,6 +26,7 @@ const CRM_MENU = [
   { label: "Quotations", icon: "file-text", route: "/crm/quotation" },
   { label: "Bookings", icon: "check-circle", route: "/crm/bookings" },
   { label: "Booking Approvals", icon: "shield", route: "/approvals/bookings" },
+  { label: "Discount Approvals", icon: "percent", route: "/approvals/discounts" },
   { label: "Pricing", icon: "dollar-sign", route: "/crm/pricing" },
 ];
 

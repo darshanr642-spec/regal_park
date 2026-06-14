@@ -30,6 +30,8 @@ from models import (
     BookingCreate,
     BookingUpdate,
     CrmActivity,
+    DiscountDecision,
+    DiscountRequest,
     Lead,
     LeadCreate,
     LeadUpdate,
@@ -451,12 +453,8 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
     if current_sales not in ("AVAILABLE", "RESERVED"):
         raise HTTPException(409, f"Plot {body.plot_no} is not available (status: {current_sales})")
 
-    # Validate discount authority
-    if body.discount_pct > 0 and user.role == "CRM_SALES" and body.discount_pct > 3.0:
-        raise HTTPException(
-            403,
-            f"CRM_SALES can request up to 3% discount. {body.discount_pct}% requires SALES_MANAGER approval.",
-        )
+    # Discount validation moved to discount approval workflow
+    # All discounts > 0% auto-create a discount request for tier-based approval
 
     # Check no existing active booking for this plot
     existing = await db.bookings.find_one(
@@ -499,6 +497,10 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
 
     # Auto-create approval chain
     await _create_booking_approval(doc, lead)
+
+    # Auto-create discount request if discount > 0
+    if body.discount_pct > 0:
+        await _create_discount_request(doc, user)
 
     return Booking(**doc)
 
@@ -890,4 +892,187 @@ async def decide_booking_approval(
 
     updated = await db.booking_approvals.find_one({"id": approval_id}, {"_id": 0})
     return BookingApproval(**updated)
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  DISCOUNT REQUESTS
+# ──────────────────────────────────────────────────────────────────────
+
+def _discount_tier_role(pct: float) -> str:
+    """Return the required approver role based on discount percentage tier."""
+    if pct <= 3.0:
+        return "SALES_MANAGER"
+    elif pct <= 5.0:
+        return "PROJECT_DIRECTOR"
+    elif pct <= 8.0:
+        return "COO"
+    else:
+        return "ADMIN"  # >8% needs ADMIN
+
+
+async def _create_discount_request(booking: dict, user) -> dict:
+    """Create a discount request tied to a booking."""
+    pct = booking["discount_pct"]
+    sale = booking["sale_value_inr"]
+    discount_amt = round(sale * pct / 100, 2)
+    net = round(sale - discount_amt, 2)
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "booking_id": booking["id"],
+        "lead_id": booking["lead_id"],
+        "plot_no": booking["plot_no"],
+        "client_name": booking["client_name"],
+        "elevation_type": booking["elevation_type"],
+        "sale_value_inr": sale,
+        "discount_pct": pct,
+        "discount_amount_inr": discount_amt,
+        "net_value_inr": net,
+        "margin_impact_inr": discount_amt,
+        "required_approver_role": _discount_tier_role(pct),
+        "status": "PENDING",
+        "decided_by": None,
+        "decided_at": None,
+        "decision_note": None,
+        "counter_pct": None,
+        "counter_amount_inr": None,
+        "requested_by": user.full_name,
+        "created_at": _now(),
+    }
+    await db.discount_requests.insert_one({**doc, "_id": doc["id"]})
+
+    await _log_activity(
+        booking["lead_id"], "NOTE",
+        f"Discount request created: {pct}% (₹{discount_amt:,.0f}) on ₹{sale:,.0f}, requires {doc['required_approver_role']}",
+        user,
+    )
+    return doc
+
+
+# Roles that can view/decide discount requests
+DISCOUNT_VIEW_ROLES = {"ADMIN", "COO", "PROJECT_DIRECTOR", "SALES_MANAGER"}
+
+
+@router.get("/discount-requests", response_model=List[DiscountRequest])
+async def list_discount_requests(
+    status: Optional[str] = Query(None),
+    user: User = Depends(require_roles(DISCOUNT_VIEW_ROLES)),
+):
+    """List discount requests. Non-ADMIN users see only requests they can act on plus completed ones."""
+    filt: dict = {}
+    if status:
+        filt["status"] = status
+
+    rows = await db.discount_requests.find(filt, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+    if user.role != "ADMIN":
+        # Show actionable (matching role) + completed
+        rows = [
+            r for r in rows
+            if (r["status"] == "PENDING" and r["required_approver_role"] == user.role)
+            or r["status"] != "PENDING"
+        ]
+
+    return [DiscountRequest(**r) for r in rows]
+
+
+@router.get("/discount-requests/{req_id}", response_model=DiscountRequest)
+async def get_discount_request(
+    req_id: str,
+    user: User = Depends(require_roles(DISCOUNT_VIEW_ROLES)),
+):
+    doc = await db.discount_requests.find_one({"id": req_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Discount request not found")
+    return DiscountRequest(**doc)
+
+
+@router.post("/discount-requests/{req_id}/decide", response_model=DiscountRequest)
+async def decide_discount_request(
+    req_id: str,
+    body: DiscountDecision,
+    user: User = Depends(require_roles(DISCOUNT_VIEW_ROLES)),
+):
+    """Approve, reject, or counter-offer a discount request."""
+    if body.decision not in ("APPROVED", "REJECTED", "COUNTER_OFFER"):
+        raise HTTPException(422, "Decision must be APPROVED, REJECTED, or COUNTER_OFFER")
+
+    doc = await db.discount_requests.find_one({"id": req_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Discount request not found")
+    if doc["status"] != "PENDING":
+        raise HTTPException(409, f"Request is already {doc['status']}")
+
+    # Permission check: ADMIN can decide anything, otherwise must match tier
+    if user.role != "ADMIN" and user.role != doc["required_approver_role"]:
+        raise HTTPException(
+            403,
+            f"This discount requires {doc['required_approver_role']} approval, you are {user.role}",
+        )
+
+    now = _now()
+    updates: dict = {
+        "decided_by": user.full_name,
+        "decided_at": now,
+        "decision_note": body.note,
+    }
+
+    if body.decision == "APPROVED":
+        updates["status"] = "APPROVED"
+        # Update booking discount_approved_by
+        await db.bookings.update_one(
+            {"id": doc["booking_id"]},
+            {"$set": {"discount_approved_by": user.full_name}},
+        )
+        await _log_activity(
+            doc["lead_id"], "NOTE",
+            f"Discount {doc['discount_pct']}% APPROVED by {user.full_name} (₹{doc['discount_amount_inr']:,.0f} margin impact)",
+            user,
+        )
+
+    elif body.decision == "REJECTED":
+        updates["status"] = "REJECTED"
+        # Reset discount on booking to 0
+        sale = doc["sale_value_inr"]
+        await db.bookings.update_one(
+            {"id": doc["booking_id"]},
+            {"$set": {"discount_pct": 0, "sale_value_inr": sale, "discount_approved_by": None}},
+        )
+        await _log_activity(
+            doc["lead_id"], "NOTE",
+            f"Discount {doc['discount_pct']}% REJECTED by {user.full_name}: {body.note or 'N/A'}",
+            user,
+        )
+
+    elif body.decision == "COUNTER_OFFER":
+        if body.counter_pct is None or body.counter_pct <= 0:
+            raise HTTPException(422, "counter_pct is required for COUNTER_OFFER")
+        if body.counter_pct >= doc["discount_pct"]:
+            raise HTTPException(422, "Counter must be less than original discount")
+
+        counter_amt = round(doc["sale_value_inr"] * body.counter_pct / 100, 2)
+        counter_net = round(doc["sale_value_inr"] - counter_amt, 2)
+
+        updates["status"] = "COUNTER_OFFERED"
+        updates["counter_pct"] = body.counter_pct
+        updates["counter_amount_inr"] = counter_amt
+
+        # Update booking with counter-offered discount
+        await db.bookings.update_one(
+            {"id": doc["booking_id"]},
+            {"$set": {
+                "discount_pct": body.counter_pct,
+                "discount_approved_by": user.full_name,
+            }},
+        )
+        await _log_activity(
+            doc["lead_id"], "NOTE",
+            f"Discount counter-offered by {user.full_name}: {doc['discount_pct']}% → {body.counter_pct}% (₹{counter_amt:,.0f})",
+            user,
+        )
+
+    await db.discount_requests.update_one({"id": req_id}, {"$set": updates})
+    updated = await db.discount_requests.find_one({"id": req_id}, {"_id": 0})
+    return DiscountRequest(**updated)
+
 

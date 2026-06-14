@@ -571,3 +571,36 @@ class BookingApproval(BaseModel):
 class BookingApprovalDecision(BaseModel):
     decision: str  # APPROVED / REJECTED
     note: Optional[str] = None
+
+
+# ---- CRM: Discount Requests ----
+DISCOUNT_STATUSES = ["PENDING", "APPROVED", "REJECTED", "COUNTER_OFFERED"]
+
+
+class DiscountRequest(BaseModel):
+    id: str
+    booking_id: str
+    lead_id: str
+    plot_no: int
+    client_name: str
+    elevation_type: str
+    sale_value_inr: float
+    discount_pct: float
+    discount_amount_inr: float       # sale_value * discount_pct / 100
+    net_value_inr: float             # sale_value - discount_amount
+    margin_impact_inr: float         # same as discount_amount (revenue lost)
+    required_approver_role: str      # tier-based
+    status: str = "PENDING"
+    decided_by: Optional[str] = None
+    decided_at: Optional[str] = None
+    decision_note: Optional[str] = None
+    counter_pct: Optional[float] = None
+    counter_amount_inr: Optional[float] = None
+    requested_by: str
+    created_at: str
+
+
+class DiscountDecision(BaseModel):
+    decision: str  # APPROVED / REJECTED / COUNTER_OFFER
+    note: Optional[str] = None
+    counter_pct: Optional[float] = None  # only for COUNTER_OFFER
