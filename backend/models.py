@@ -480,6 +480,7 @@ class Quotation(BaseModel):
     total_value_inr: float
     valid_until: str
     generated_by: str
+    pdf_url: Optional[str] = None
     created_at: str
 
 

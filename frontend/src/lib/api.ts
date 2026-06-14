@@ -185,6 +185,10 @@ export const api = {
     request<any[]>(`/crm/quotations${leadId ? `?lead_id=${leadId}` : ""}`),
   crmCreateQuotation: (body: any) =>
     request<any>("/crm/quotations", { method: "POST", body }),
+  crmQuotationPdfUrl: async (quoteId: string) => {
+    const token = await getToken();
+    return `${BASE}/api/crm/quotations/${quoteId}/pdf?token=${token}`;
+  },
 
   // CRM — Bookings
   crmBookings: (status?: string) =>
