@@ -294,6 +294,7 @@ export const api = {
   cooPortfolio: () => request<any>("/coo/portfolio"),
   cooProjectsHealth: () => request<any[]>("/coo/projects-health"),
   cooRiskRegister: () => request<any>("/coo/risk-register"),
+  cooCommandCenter: () => request<any>("/coo/command-center"),
 
   // Inventory Command Center
   inventoryCommandCenter: () => request<any>("/inventory/command-center"),
