@@ -30,12 +30,19 @@ const CRM_MENU = [
   { label: "Pricing", icon: "dollar-sign", route: "/crm/pricing" },
 ];
 
+const PORTAL_MENU = [
+  { label: "My Villa", icon: "home", route: "/portal/home" },
+  { label: "Timeline", icon: "clock", route: "/portal/timeline" },
+  { label: "Payments", icon: "credit-card", route: "/portal/payments" },
+];
+
 export default function Profile() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const initials = (user?.full_name || "RP").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
   const menu = user?.role === "CLIENT" ? MENU.filter((m) => !m.internal) : MENU;
   const showCrm = user?.role !== "CLIENT";
+  const isClient = user?.role === "CLIENT";
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -75,6 +82,24 @@ export default function Profile() {
                 onPress={() => router.push(m.route as any)}
               >
                 <View style={styles.rowIcon}><Feather name={m.icon as any} size={18} color={colors.success} /></View>
+                <Text style={styles.rowLabel}>{m.label}</Text>
+                <Feather name="chevron-right" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </>
+        )}
+
+        {(isClient || user?.role === "ADMIN") && (
+          <>
+            <Text style={styles.sectionHead}>MY VILLA PORTAL</Text>
+            {PORTAL_MENU.map((m) => (
+              <Pressable
+                key={m.label}
+                testID={`portal-${m.label.replace(/[\s&]+/g, "-").toLowerCase()}`}
+                style={styles.row}
+                onPress={() => router.push(m.route as any)}
+              >
+                <View style={styles.rowIcon}><Feather name={m.icon as any} size={18} color={colors.brand} /></View>
                 <Text style={styles.rowLabel}>{m.label}</Text>
                 <Feather name="chevron-right" size={18} color={colors.muted} />
               </Pressable>

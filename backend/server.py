@@ -18,6 +18,7 @@ from routes import (
     documents,
     files,
     plots,
+    portal,
     procurement,
     reports_pdf,
     workflow,
@@ -60,6 +61,7 @@ api.include_router(checklists.router)
 api.include_router(plots.router)
 api.include_router(reports_pdf.router)
 api.include_router(crm.router)
+api.include_router(portal.router)
 
 app.include_router(api)
 

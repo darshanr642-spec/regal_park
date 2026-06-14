@@ -229,6 +229,11 @@ export const api = {
     request<any>(`/crm/discount-requests/${id}`),
   decideDiscountRequest: (id: string, body: { decision: string; note?: string; counter_pct?: number }) =>
     request<any>(`/crm/discount-requests/${id}/decide`, { method: "POST", body }),
+
+  // Portal (Client-facing)
+  portalDashboard: () => request<any>("/portal/dashboard"),
+  portalTimeline: () => request<any>("/portal/timeline"),
+  portalPayments: () => request<any>("/portal/payments"),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {
