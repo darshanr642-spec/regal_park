@@ -234,6 +234,11 @@ export const api = {
   portalDashboard: () => request<any>("/portal/dashboard"),
   portalTimeline: () => request<any>("/portal/timeline"),
   portalPayments: () => request<any>("/portal/payments"),
+
+  // COO Dashboard
+  cooPortfolio: () => request<any>("/coo/portfolio"),
+  cooProjectsHealth: () => request<any[]>("/coo/projects-health"),
+  cooRiskRegister: () => request<any>("/coo/risk-register"),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

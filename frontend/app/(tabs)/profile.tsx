@@ -106,6 +106,20 @@ export default function Profile() {
             ))}
           </>
         )}
+        {(user?.role === "COO" || user?.role === "ADMIN") && (
+          <>
+            <Text style={styles.sectionHead}>EXECUTIVE</Text>
+            <Pressable
+              testID="coo-command-centre"
+              style={styles.row}
+              onPress={() => router.push("/coo/dashboard" as any)}
+            >
+              <View style={styles.rowIcon}><Feather name="activity" size={18} color={colors.error} /></View>
+              <Text style={styles.rowLabel}>COO Command Centre</Text>
+              <Feather name="chevron-right" size={18} color={colors.muted} />
+            </Pressable>
+          </>
+        )}
 
         <Text style={styles.sectionHead}>ACCOUNT</Text>
         <Pressable testID="logout-button" style={[styles.row, styles.logout]} onPress={logout}>

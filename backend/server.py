@@ -13,6 +13,7 @@ from config import ALLOWED_ORIGINS, SEED_DEMO_DATA, client, db, log
 from routes import (
     auth_routes,
     checklists,
+    coo,
     core,
     crm,
     documents,
@@ -62,6 +63,7 @@ api.include_router(plots.router)
 api.include_router(reports_pdf.router)
 api.include_router(crm.router)
 api.include_router(portal.router)
+api.include_router(coo.router)
 
 app.include_router(api)
 
