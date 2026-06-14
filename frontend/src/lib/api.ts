@@ -198,6 +198,8 @@ export const api = {
     request<any>("/crm/bookings", { method: "POST", body }),
   crmUpdateBooking: (id: string, body: any) =>
     request<any>(`/crm/bookings/${id}`, { method: "PATCH", body }),
+  convertBooking: (id: string) =>
+    request<any>(`/crm/bookings/${id}/convert`, { method: "POST" }),
 
   // CRM — Dashboard
   crmDashboard: () => request<any>("/crm/dashboard"),

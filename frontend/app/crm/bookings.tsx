@@ -6,9 +6,11 @@ import { useRouter } from "expo-router";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
 import { api } from "@/src/lib/api";
+import { useAuth } from "@/src/lib/auth";
 
 export default function CrmBookings() {
   const router = useRouter();
+  const { user } = useAuth();
   const [bookings, setBookings] = React.useState<any[]>([]);
   const [leads, setLeads] = React.useState<any[]>([]);
   const [plots, setPlots] = React.useState<any[]>([]);
@@ -216,6 +218,35 @@ export default function CrmBookings() {
                 <Pressable style={[styles.actionBtn, { backgroundColor: colors.error }]} onPress={() => cancelBooking(b.id)}>
                   <Feather name="x" size={14} color="#fff" />
                   <Text style={styles.actionTxt}>Cancel</Text>
+                </Pressable>
+              </View>
+            )}
+            {b.status === "APPROVED" && user?.role === "ADMIN" && (
+              <View style={styles.actions}>
+                <Pressable
+                  style={[styles.actionBtn, { backgroundColor: colors.brand }]}
+                  onPress={() => {
+                    Alert.alert(
+                      "Convert to Project",
+                      `Create project for ${b.client_name}, Plot #${b.plot_no}?\n\nThis will:\n• Create client account\n• Create construction project\n• Generate payment milestones\n• Set plot to Under Construction`,
+                      [
+                        { text: "Cancel" },
+                        {
+                          text: "Convert",
+                          onPress: async () => {
+                            try {
+                              const res = await api.convertBooking(b.id);
+                              Alert.alert("Success", res.message || "Converted");
+                              load();
+                            } catch (e: any) { Alert.alert("Error", e.message); }
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                >
+                  <Feather name="arrow-right-circle" size={14} color="#fff" />
+                  <Text style={styles.actionTxt}>Convert to Project</Text>
                 </Pressable>
               </View>
             )}

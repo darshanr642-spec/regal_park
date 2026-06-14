@@ -53,6 +53,25 @@ class Project(BaseModel):
     status: str = "IN_PROGRESS"
 
 
+MILESTONE_NAMES = ["Booking Amount", "Agreement", "Foundation", "Structure", "Finishing", "Handover"]
+MILESTONE_STATUSES = ["PENDING", "INVOICED", "PAID", "OVERDUE"]
+
+
+class PaymentMilestone(BaseModel):
+    id: str
+    booking_id: str
+    project_id: str
+    plot_no: int
+    client_name: str
+    milestone_name: str
+    order: int
+    amount_inr: float
+    due_date: Optional[str] = None
+    paid_date: Optional[str] = None
+    status: str = "PENDING"
+    created_at: str
+
+
 class Stage(BaseModel):
     id: str
     project_id: str

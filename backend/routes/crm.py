@@ -18,10 +18,12 @@ from auth_utils import (
     require_roles,
 )
 from config import db
+from auth_utils import hash_pw
 from models import (
     BOOKING_STATUSES,
     LEAD_SOURCES,
     LEAD_STATUSES,
+    MILESTONE_NAMES,
     SALES_STATUSES,
     ApprovalLevel,
     Booking,
@@ -35,6 +37,7 @@ from models import (
     Lead,
     LeadCreate,
     LeadUpdate,
+    PaymentMilestone,
     Plot,
     Pricing,
     PricingCreate,
@@ -567,6 +570,161 @@ async def update_booking(
 
     updated = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     return Booking(**updated)
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  BOOKING → PROJECT CONVERSION
+# ──────────────────────────────────────────────────────────────────────
+
+@router.post("/bookings/{booking_id}/convert")
+async def convert_booking_to_project(
+    booking_id: str,
+    user: User = Depends(require_roles({"ADMIN"})),
+):
+    """Convert an APPROVED booking into a construction project.
+
+    Idempotent: if booking is already CONFIRMED, returns existing data.
+    """
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+
+    # Idempotency: already converted
+    if booking["status"] == "CONFIRMED":
+        project = await db.projects.find_one({"plot_number": f"Plot {booking['plot_no']}, Regal Park"}, {"_id": 0})
+        milestones = await db.payment_milestones.find({"booking_id": booking_id}, {"_id": 0}).to_list(20)
+        return {
+            "message": "Already converted",
+            "booking": Booking(**booking).model_dump(),
+            "project_id": project["id"] if project else None,
+            "milestones_count": len(milestones),
+        }
+
+    if booking["status"] != "APPROVED":
+        raise HTTPException(
+            409,
+            f"Booking must be APPROVED to convert (current: {booking['status']}). "
+            f"Complete the booking approval workflow first.",
+        )
+
+    # Verify discount approval if discount > 0
+    if booking.get("discount_pct", 0) > 0:
+        disc = await db.discount_requests.find_one(
+            {"booking_id": booking_id, "status": {"$in": ["APPROVED", "COUNTER_OFFERED"]}},
+        )
+        if not disc:
+            raise HTTPException(
+                409,
+                "Discount approval is pending. Complete discount approval before converting.",
+            )
+
+    now = _now()
+    lead = await db.leads.find_one({"id": booking["lead_id"]}, {"_id": 0}) or {}
+    plot = await db.plots.find_one({"plot_no": booking["plot_no"]}, {"_id": 0}) or {}
+
+    # ── 1. Create CLIENT user if not exists ──
+    client_email = (lead.get("email") or f"client.plot{booking['plot_no']}@regalpark.com").lower()
+    existing_client = await db.users.find_one({"email": client_email}, {"_id": 0})
+    if existing_client:
+        client_id = existing_client["id"]
+    else:
+        client_id = str(uuid.uuid4())
+        client_doc = {
+            "id": client_id,
+            "email": client_email,
+            "full_name": booking["client_name"],
+            "role": "CLIENT",
+            "phone": lead.get("phone"),
+            "company": None,
+            "is_active": True,
+            "hashed_password": hash_pw("RegalPark@2026"),
+        }
+        await db.users.insert_one({**client_doc, "_id": client_id})
+
+    # ── 2. Create or link project ──
+    plot_label = f"Plot {booking['plot_no']}, Regal Park"
+    existing_project = await db.projects.find_one({"plot_number": plot_label}, {"_id": 0})
+    if existing_project:
+        project_id = existing_project["id"]
+    else:
+        project_id = str(uuid.uuid4())
+        dim = plot.get("dimension_ft", "40 x 50")
+        parts = dim.split("x")
+        sqft = int(float(parts[0].strip()) * float(parts[1].strip())) if len(parts) == 2 else 2000
+
+        project_doc = {
+            "id": project_id,
+            "name": f"{booking['elevation_type']} Villa — Plot #{booking['plot_no']}",
+            "plot_number": plot_label,
+            "client_name": booking["client_name"],
+            "client_id": client_id,
+            "villa_type": booking["elevation_type"],
+            "built_up_area_sqft": sqft,
+            "start_date": now[:10],
+            "target_handover_date": "",  # to be set by PM
+            "budget_inr": booking["sale_value_inr"],
+            "actual_spent_inr": 0.0,
+            "progress_pct": 0.0,
+            "project_manager": "",
+            "site_engineer": "",
+            "consultants": [],
+            "contractors": [],
+            "hero_image_url": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+            "status": "IN_PROGRESS",
+        }
+        await db.projects.insert_one({**project_doc, "_id": project_id})
+
+    # ── 3. Create payment milestones (idempotent) ──
+    existing_milestones = await db.payment_milestones.count_documents({"booking_id": booking_id})
+    if existing_milestones == 0:
+        sale = booking["sale_value_inr"]
+        # Split: Booking(10%), Agreement(15%), Foundation(20%), Structure(25%), Finishing(20%), Handover(10%)
+        pct_splits = [10, 15, 20, 25, 20, 10]
+        milestone_docs = []
+        for i, (name, pct) in enumerate(zip(MILESTONE_NAMES, pct_splits)):
+            amt = round(sale * pct / 100, 2)
+            m = {
+                "id": str(uuid.uuid4()),
+                "booking_id": booking_id,
+                "project_id": project_id,
+                "plot_no": booking["plot_no"],
+                "client_name": booking["client_name"],
+                "milestone_name": name,
+                "order": i + 1,
+                "amount_inr": amt,
+                "due_date": None,
+                "paid_date": now[:10] if name == "Booking Amount" else None,
+                "status": "PAID" if name == "Booking Amount" else "PENDING",
+                "created_at": now,
+            }
+            milestone_docs.append(m)
+        await db.payment_milestones.insert_many([{**m, "_id": m["id"]} for m in milestone_docs])
+
+    # ── 4. Update plot → UNDER_CONSTRUCTION ──
+    await db.plots.update_one(
+        {"plot_no": booking["plot_no"]},
+        {"$set": {"sales_status": "UNDER_CONSTRUCTION"}},
+    )
+
+    # ── 5. Update booking → CONFIRMED ──
+    await db.bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"status": "CONFIRMED", "agreement_date": now[:10]}},
+    )
+
+    await _log_activity(
+        booking["lead_id"], "NOTE",
+        f"Booking converted to project by {user.full_name}. Project ID: {project_id[:8]}", user,
+    )
+
+    return {
+        "message": "Booking converted to project successfully",
+        "project_id": project_id,
+        "client_id": client_id,
+        "milestones_count": len(MILESTONE_NAMES),
+        "booking_status": "CONFIRMED",
+        "plot_sales_status": "UNDER_CONSTRUCTION",
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────
