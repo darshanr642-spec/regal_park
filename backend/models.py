@@ -346,3 +346,184 @@ class StageChecklistCreate(BaseModel):
 class ChecklistItemUpdate(BaseModel):
     status: str  # PENDING / PASS / FAIL
     remarks: Optional[str] = None
+
+
+# ---- CRM: Pricing ----
+PRICING_STATUSES = ["ACTIVE", "EXPIRED", "DRAFT"]
+
+
+class PremiumZone(BaseModel):
+    plot_range_start: int
+    plot_range_end: int
+    premium_pct: float
+
+
+class Pricing(BaseModel):
+    id: str
+    elevation_type: str  # Elora / Selora / Avira / Riora
+    base_price_inr: float = 0.0  # total base price for standard plot
+    base_price_per_sqft_inr: float
+    premium_pct: float = 0.0  # flat premium percentage
+    premium_zones: List[PremiumZone] = []
+    valid_from: str
+    valid_until: Optional[str] = None
+    status: str = "ACTIVE"  # ACTIVE / EXPIRED / DRAFT
+
+
+class PricingCreate(BaseModel):
+    elevation_type: str
+    base_price_inr: float = 0.0
+    base_price_per_sqft_inr: float
+    premium_pct: float = 0.0
+    premium_zones: List[PremiumZone] = []
+    valid_from: str
+    valid_until: Optional[str] = None
+    status: str = "ACTIVE"
+
+
+# ---- CRM: Leads ----
+LEAD_SOURCES = ["WALK_IN", "REFERRAL", "WEBSITE", "AD", "BROKER"]
+LEAD_STATUSES = [
+    "NEW", "CONTACTED", "SITE_VISIT_SCHEDULED", "SITE_VISIT_DONE",
+    "NEGOTIATION", "BOOKING", "LOST",
+]
+
+
+class Lead(BaseModel):
+    id: str
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    source: str  # WALK_IN / REFERRAL / WEBSITE / AD / BROKER
+    interested_elevation: Optional[str] = None
+    budget_range_inr: Optional[str] = None
+    status: str = "NEW"
+    assigned_to: str
+    notes: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class LeadCreate(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    source: str
+    interested_elevation: Optional[str] = None
+    budget_range_inr: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LeadUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    status: Optional[str] = None
+    interested_elevation: Optional[str] = None
+    budget_range_inr: Optional[str] = None
+    assigned_to: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ---- CRM: Site Visits ----
+class SiteVisit(BaseModel):
+    id: str
+    lead_id: str
+    scheduled_at: str
+    actual_at: Optional[str] = None
+    conducted_by: str
+    plots_shown: List[int] = []
+    feedback: Optional[str] = None
+    follow_up_date: Optional[str] = None
+    photos: List[str] = []
+    created_at: str
+
+
+class SiteVisitCreate(BaseModel):
+    lead_id: str
+    scheduled_at: str
+    plots_shown: List[int] = []
+
+
+class SiteVisitUpdate(BaseModel):
+    actual_at: Optional[str] = None
+    feedback: Optional[str] = None
+    follow_up_date: Optional[str] = None
+    plots_shown: Optional[List[int]] = None
+    photos: Optional[List[str]] = None
+
+
+# ---- CRM: Quotations ----
+class QuotationPlot(BaseModel):
+    plot_no: int
+    elevation: str
+    base_price_inr: float
+    premium_pct: float
+    quoted_price_inr: float
+
+
+class Quotation(BaseModel):
+    id: str
+    lead_id: str
+    plots: List[QuotationPlot]
+    total_value_inr: float
+    valid_until: str
+    generated_by: str
+    created_at: str
+
+
+class QuotationCreate(BaseModel):
+    lead_id: str
+    plots: List[QuotationPlot]
+    valid_until: str
+
+
+# ---- CRM: Bookings ----
+BOOKING_STATUSES = ["PROVISIONAL", "CONFIRMED", "CANCELLED"]
+
+
+class Booking(BaseModel):
+    id: str
+    lead_id: str
+    plot_no: int
+    client_name: str
+    elevation_type: str
+    sale_value_inr: float
+    discount_pct: float = 0.0
+    discount_approved_by: Optional[str] = None
+    booking_amount_inr: float
+    booking_date: str
+    agreement_date: Optional[str] = None
+    agreement_doc_url: Optional[str] = None
+    status: str = "PROVISIONAL"
+    cancelled_reason: Optional[str] = None
+    created_by: str
+    created_at: str
+
+
+class BookingCreate(BaseModel):
+    lead_id: str
+    plot_no: int
+    client_name: str
+    elevation_type: str
+    sale_value_inr: float
+    discount_pct: float = 0.0
+    booking_amount_inr: float
+
+
+class BookingUpdate(BaseModel):
+    status: Optional[str] = None
+    agreement_date: Optional[str] = None
+    agreement_doc_url: Optional[str] = None
+    discount_approved_by: Optional[str] = None
+    cancelled_reason: Optional[str] = None
+
+
+# ---- CRM: Activities ----
+class CrmActivity(BaseModel):
+    id: str
+    lead_id: str
+    type: str  # CALL / EMAIL / SMS / MEETING / NOTE
+    description: str
+    created_by: str
+    created_at: str

@@ -535,31 +535,39 @@ async def seed_crm():
         pricing_docs = [
             {
                 "id": str(uuid.uuid4()), "elevation_type": "Elora",
+                "base_price_inr": 12750000.0,
                 "base_price_per_sqft_inr": 8500.0,
+                "premium_pct": 5.0,
                 "premium_zones": [
                     {"plot_range_start": 100, "plot_range_end": 110, "premium_pct": 5.0},
                 ],
-                "valid_from": "2026-01-01", "valid_until": None,
+                "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
                 "id": str(uuid.uuid4()), "elevation_type": "Selora",
+                "base_price_inr": 13800000.0,
                 "base_price_per_sqft_inr": 9200.0,
+                "premium_pct": 0.0,
                 "premium_zones": [],
-                "valid_from": "2026-01-01", "valid_until": None,
+                "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
                 "id": str(uuid.uuid4()), "elevation_type": "Avira",
+                "base_price_inr": 11700000.0,
                 "base_price_per_sqft_inr": 7800.0,
+                "premium_pct": 3.0,
                 "premium_zones": [
                     {"plot_range_start": 1, "plot_range_end": 20, "premium_pct": 3.0},
                 ],
-                "valid_from": "2026-01-01", "valid_until": None,
+                "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
                 "id": str(uuid.uuid4()), "elevation_type": "Riora",
+                "base_price_inr": 10800000.0,
                 "base_price_per_sqft_inr": 7200.0,
+                "premium_pct": 0.0,
                 "premium_zones": [],
-                "valid_from": "2026-01-01", "valid_until": None,
+                "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
         ]
         await db.pricing.insert_many([{**d, "_id": d["id"]} for d in pricing_docs])
