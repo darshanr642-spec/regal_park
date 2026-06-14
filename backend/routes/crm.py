@@ -17,7 +17,7 @@ from auth_utils import (
     get_user_flexible,
     require_roles,
 )
-from config import db
+from config import client, db
 from auth_utils import hash_pw
 from models import (
     BOOKING_STATUSES,
@@ -52,6 +52,27 @@ from models import (
 router = APIRouter(prefix="/crm", tags=["CRM"])
 
 _now = lambda: datetime.now(timezone.utc).isoformat()
+
+# ── Transaction support (requires MongoDB replica set) ───────────────
+_txn_supported = None  # type: Optional[bool]  # lazily probed
+
+
+async def _supports_transactions() -> bool:
+    """Probe whether the MongoDB deployment supports multi-doc transactions.
+
+    Returns True for replica sets and sharded clusters, False for standalone.
+    Result is cached after the first call.
+    """
+    global _txn_supported
+    if _txn_supported is not None:
+        return _txn_supported
+    try:
+        info = await db.command("hello")
+        # Replica sets report 'setName'; sharded clusters report 'msg: isdbgrid'
+        _txn_supported = bool(info.get("setName") or info.get("msg") == "isdbgrid")
+    except Exception:
+        _txn_supported = False
+    return _txn_supported
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -444,9 +465,9 @@ async def download_quotation_pdf(quote_id: str, user: User = Depends(get_user_fl
 async def create_booking(body: BookingCreate, user: User = Depends(require_roles(CRM_ROLES))):
     """Create a provisional booking for a plot.
 
-    CRIT-4: Atomic booking creation with optimistic locking.
-    - Plot status is atomically changed AVAILABLE/RESERVED → BOOKED
-    - Unique partial index prevents duplicate active bookings per plot
+    Transaction-safe: uses MongoDB multi-document transaction when replica set
+    is available. Falls back to optimistic locking on standalone deployments.
+    Unique partial index prevents duplicate active bookings per plot.
     """
     from pymongo.errors import DuplicateKeyError
 
@@ -475,36 +496,65 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
         "created_at": now,
     }
 
-    # ── ATOMIC STEP 1: Claim the plot using optimistic locking ──
-    # Only succeeds if plot is currently AVAILABLE or RESERVED
-    claim_result = await db.plots.update_one(
-        {"plot_no": body.plot_no, "sales_status": {"$in": ["AVAILABLE", "RESERVED"]}},
-        {"$set": {"sales_status": "BOOKED", "sale_value_inr": body.sale_value_inr, "sold_date": now[:10]}},
-    )
-    if claim_result.modified_count == 0:
-        # Another booking already claimed this plot
-        current_sales = plot.get("sales_status", plot.get("status", "AVAILABLE"))
-        raise HTTPException(
-            409,
-            f"Plot {body.plot_no} is no longer available (current status: {current_sales}). "
-            f"Another booking may have claimed it.",
-        )
+    use_txn = await _supports_transactions()
 
-    # ── ATOMIC STEP 2: Insert booking (unique index prevents duplicates) ──
-    try:
-        await db.bookings.insert_one({**doc, "_id": doc["id"]})
-    except DuplicateKeyError:
-        # Rollback: release the plot since we couldn't insert the booking
-        await db.plots.update_one(
-            {"plot_no": body.plot_no, "sales_status": "BOOKED"},
-            {"$set": {"sales_status": "AVAILABLE"}},
-        )
-        raise HTTPException(
-            409,
-            f"Plot {body.plot_no} already has an active booking (duplicate detected at database level).",
-        )
+    if use_txn:
+        # ── TRANSACTIONAL PATH (replica set) ──────────────────────
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                # Claim plot atomically within transaction
+                claim_result = await db.plots.update_one(
+                    {"plot_no": body.plot_no, "sales_status": {"$in": ["AVAILABLE", "RESERVED"]}},
+                    {"$set": {"sales_status": "BOOKED", "sale_value_inr": body.sale_value_inr, "sold_date": now[:10]}},
+                    session=session,
+                )
+                if claim_result.modified_count == 0:
+                    await session.abort_transaction()
+                    current_sales = plot.get("sales_status", plot.get("status", "AVAILABLE"))
+                    raise HTTPException(
+                        409,
+                        f"Plot {body.plot_no} is no longer available (current status: {current_sales}). "
+                        f"Another booking may have claimed it.",
+                    )
 
-    # ── Non-critical follow-ups (safe to proceed) ──
+                # Insert booking within same transaction
+                try:
+                    await db.bookings.insert_one({**doc, "_id": doc["id"]}, session=session)
+                except DuplicateKeyError:
+                    await session.abort_transaction()
+                    raise HTTPException(
+                        409,
+                        f"Plot {body.plot_no} already has an active booking (duplicate detected at database level).",
+                    )
+                # Transaction commits automatically on exit
+    else:
+        # ── FALLBACK PATH (standalone — optimistic locking) ───────
+        claim_result = await db.plots.update_one(
+            {"plot_no": body.plot_no, "sales_status": {"$in": ["AVAILABLE", "RESERVED"]}},
+            {"$set": {"sales_status": "BOOKED", "sale_value_inr": body.sale_value_inr, "sold_date": now[:10]}},
+        )
+        if claim_result.modified_count == 0:
+            current_sales = plot.get("sales_status", plot.get("status", "AVAILABLE"))
+            raise HTTPException(
+                409,
+                f"Plot {body.plot_no} is no longer available (current status: {current_sales}). "
+                f"Another booking may have claimed it.",
+            )
+
+        try:
+            await db.bookings.insert_one({**doc, "_id": doc["id"]})
+        except DuplicateKeyError:
+            # Rollback: release the plot since we couldn't insert the booking
+            await db.plots.update_one(
+                {"plot_no": body.plot_no, "sales_status": "BOOKED"},
+                {"$set": {"sales_status": "AVAILABLE"}},
+            )
+            raise HTTPException(
+                409,
+                f"Plot {body.plot_no} already has an active booking (duplicate detected at database level).",
+            )
+
+    # ── Non-critical follow-ups (outside transaction — idempotent) ──
     await db.leads.update_one(
         {"id": body.lead_id},
         {"$set": {"status": "BOOKING", "updated_at": now}},
@@ -600,10 +650,11 @@ async def convert_booking_to_project(
 ):
     """Convert an APPROVED booking into a construction project.
 
-    CRIT-4: Atomic conversion with optimistic locking.
-    - Booking status APPROVED→CONFIRMED is atomic (update_one with condition)
-    - Client + project creation is idempotent (find-or-create)
-    - Duplicate clicks are harmless
+    Transaction-safe: uses MongoDB multi-document transaction when replica set
+    is available. The entire conversion (booking lock + client + project +
+    milestones + plot update) runs inside one transaction.
+    Falls back to idempotent optimistic locking on standalone deployments.
+    Duplicate clicks are harmless.
     """
     from pymongo.errors import DuplicateKeyError
 
@@ -640,125 +691,146 @@ async def convert_booking_to_project(
                 "Discount approval is pending. Complete discount approval before converting.",
             )
 
-    # ── ATOMIC STEP 1: Lock booking status APPROVED → CONFIRMED ──
-    # Only one request can transition from APPROVED — prevents duplicate conversions
-    lock_result = await db.bookings.update_one(
-        {"id": booking_id, "status": "APPROVED"},
-        {"$set": {"status": "CONFIRMED", "agreement_date": _now()[:10]}},
-    )
-    if lock_result.modified_count == 0:
-        # Re-check current status for better error message
-        current = await db.bookings.find_one({"id": booking_id}, {"status": 1, "_id": 0})
-        if current and current.get("status") == "CONFIRMED":
-            return {"message": "Already converted (concurrent request)"}
-        raise HTTPException(409, "Booking is no longer APPROVED — conversion failed.")
-
+    use_txn = await _supports_transactions()
     now = _now()
     lead = await db.leads.find_one({"id": booking["lead_id"]}, {"_id": 0}) or {}
     plot = await db.plots.find_one({"plot_no": booking["plot_no"]}, {"_id": 0}) or {}
 
-    # ── STEP 2: Create CLIENT user (idempotent — find or create) ──
-    client_email = (lead.get("email") or f"client.plot{booking['plot_no']}@regalpark.com").lower()
-    existing_client = await db.users.find_one({"email": client_email}, {"_id": 0})
-    if existing_client:
-        client_id = existing_client["id"]
-    else:
-        client_id = str(uuid.uuid4())
-        client_doc = {
-            "id": client_id,
-            "email": client_email,
-            "full_name": booking["client_name"],
-            "role": "CLIENT",
-            "phone": lead.get("phone"),
-            "company": None,
-            "is_active": True,
-            "hashed_password": hash_pw("RegalPark@2026"),
-        }
-        try:
-            await db.users.insert_one({**client_doc, "_id": client_id})
-        except DuplicateKeyError:
-            # Concurrent insert — fetch the existing one
-            existing_client = await db.users.find_one({"email": client_email}, {"_id": 0})
-            client_id = existing_client["id"] if existing_client else client_id
+    async def _do_conversion(session=None):
+        """Execute all conversion writes, optionally within a transaction session."""
+        kw = {"session": session} if session else {}
 
-    # ── STEP 3: Create project (idempotent — find or create) ──
-    plot_label = f"Plot {booking['plot_no']}, Regal Park"
-    existing_project = await db.projects.find_one({"plot_number": plot_label}, {"_id": 0})
-    if existing_project:
-        project_id = existing_project["id"]
-    else:
-        project_id = str(uuid.uuid4())
-        dim = plot.get("dimension_ft", "40 x 50")
-        parts = dim.split("x")
-        sqft = int(float(parts[0].strip()) * float(parts[1].strip())) if len(parts) == 2 else 2000
+        # STEP 1: Lock booking status APPROVED → CONFIRMED
+        lock_result = await db.bookings.update_one(
+            {"id": booking_id, "status": "APPROVED"},
+            {"$set": {"status": "CONFIRMED", "agreement_date": now[:10]}},
+            **kw,
+        )
+        if lock_result.modified_count == 0:
+            if session:
+                await session.abort_transaction()
+            current = await db.bookings.find_one({"id": booking_id}, {"status": 1, "_id": 0})
+            if current and current.get("status") == "CONFIRMED":
+                return None  # idempotent — already converted
+            raise HTTPException(409, "Booking is no longer APPROVED — conversion failed.")
 
-        project_doc = {
-            "id": project_id,
-            "name": f"{booking['elevation_type']} Villa — Plot #{booking['plot_no']}",
-            "plot_number": plot_label,
-            "client_name": booking["client_name"],
-            "client_id": client_id,
-            "villa_type": booking["elevation_type"],
-            "built_up_area_sqft": sqft,
-            "start_date": now[:10],
-            "target_handover_date": "",  # to be set by PM
-            "budget_inr": booking["sale_value_inr"],
-            "actual_spent_inr": 0.0,
-            "progress_pct": 0.0,
-            "project_manager": "",
-            "site_engineer": "",
-            "consultants": [],
-            "contractors": [],
-            "hero_image_url": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-            "status": "IN_PROGRESS",
-        }
-        try:
-            await db.projects.insert_one({**project_doc, "_id": project_id})
-        except DuplicateKeyError:
-            existing_project = await db.projects.find_one({"plot_number": plot_label}, {"_id": 0})
-            project_id = existing_project["id"] if existing_project else project_id
-
-    # ── STEP 4: Create payment milestones (idempotent) ──
-    existing_milestones = await db.payment_milestones.count_documents({"booking_id": booking_id})
-    if existing_milestones == 0:
-        sale = booking["sale_value_inr"]
-        # Split: Booking(10%), Agreement(15%), Foundation(20%), Structure(25%), Finishing(20%), Handover(10%)
-        pct_splits = [10, 15, 20, 25, 20, 10]
-        milestone_docs = []
-        for i, (name, pct) in enumerate(zip(MILESTONE_NAMES, pct_splits)):
-            amt = round(sale * pct / 100, 2)
-            m = {
-                "id": str(uuid.uuid4()),
-                "booking_id": booking_id,
-                "project_id": project_id,
-                "plot_no": booking["plot_no"],
-                "client_name": booking["client_name"],
-                "milestone_name": name,
-                "order": i + 1,
-                "amount_inr": amt,
-                "due_date": None,
-                "paid_date": now[:10] if name == "Booking Amount" else None,
-                "status": "PAID" if name == "Booking Amount" else "PENDING",
-                "created_at": now,
+        # STEP 2: Create CLIENT user (idempotent — find or create)
+        client_email = (lead.get("email") or f"client.plot{booking['plot_no']}@regalpark.com").lower()
+        existing_client = await db.users.find_one({"email": client_email}, {"_id": 0})
+        if existing_client:
+            client_id = existing_client["id"]
+        else:
+            client_id = str(uuid.uuid4())
+            client_doc = {
+                "id": client_id,
+                "email": client_email,
+                "full_name": booking["client_name"],
+                "role": "CLIENT",
+                "phone": lead.get("phone"),
+                "company": None,
+                "is_active": True,
+                "hashed_password": hash_pw("RegalPark@2026"),
             }
-            milestone_docs.append(m)
-        await db.payment_milestones.insert_many([{**m, "_id": m["id"]} for m in milestone_docs])
+            try:
+                await db.users.insert_one({**client_doc, "_id": client_id}, **kw)
+            except DuplicateKeyError:
+                existing_client = await db.users.find_one({"email": client_email}, {"_id": 0})
+                client_id = existing_client["id"] if existing_client else client_id
 
-    # ── STEP 5: Update plot → UNDER_CONSTRUCTION ──
-    await db.plots.update_one(
-        {"plot_no": booking["plot_no"]},
-        {"$set": {"sales_status": "UNDER_CONSTRUCTION"}},
-    )
+        # STEP 3: Create project (idempotent — find or create)
+        plot_label = f"Plot {booking['plot_no']}, Regal Park"
+        existing_project = await db.projects.find_one({"plot_number": plot_label}, {"_id": 0})
+        if existing_project:
+            project_id = existing_project["id"]
+        else:
+            project_id = str(uuid.uuid4())
+            dim = plot.get("dimension_ft", "40 x 50")
+            parts = dim.split("x")
+            sqft = int(float(parts[0].strip()) * float(parts[1].strip())) if len(parts) == 2 else 2000
+
+            project_doc = {
+                "id": project_id,
+                "name": f"{booking['elevation_type']} Villa — Plot #{booking['plot_no']}",
+                "plot_number": plot_label,
+                "client_name": booking["client_name"],
+                "client_id": client_id,
+                "villa_type": booking["elevation_type"],
+                "built_up_area_sqft": sqft,
+                "start_date": now[:10],
+                "target_handover_date": "",  # to be set by PM
+                "budget_inr": booking["sale_value_inr"],
+                "actual_spent_inr": 0.0,
+                "progress_pct": 0.0,
+                "project_manager": "",
+                "site_engineer": "",
+                "consultants": [],
+                "contractors": [],
+                "hero_image_url": "https://images.pexels.com/photos/29334668/pexels-photo-29334668.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+                "status": "IN_PROGRESS",
+            }
+            try:
+                await db.projects.insert_one({**project_doc, "_id": project_id}, **kw)
+            except DuplicateKeyError:
+                existing_project = await db.projects.find_one({"plot_number": plot_label}, {"_id": 0})
+                project_id = existing_project["id"] if existing_project else project_id
+
+        # STEP 4: Create payment milestones (idempotent)
+        existing_milestones = await db.payment_milestones.count_documents({"booking_id": booking_id})
+        if existing_milestones == 0:
+            sale = booking["sale_value_inr"]
+            pct_splits = [10, 15, 20, 25, 20, 10]
+            milestone_docs = []
+            for i, (name, pct) in enumerate(zip(MILESTONE_NAMES, pct_splits)):
+                amt = round(sale * pct / 100, 2)
+                m = {
+                    "id": str(uuid.uuid4()),
+                    "booking_id": booking_id,
+                    "project_id": project_id,
+                    "plot_no": booking["plot_no"],
+                    "client_name": booking["client_name"],
+                    "milestone_name": name,
+                    "order": i + 1,
+                    "amount_inr": amt,
+                    "due_date": None,
+                    "paid_date": now[:10] if name == "Booking Amount" else None,
+                    "status": "PAID" if name == "Booking Amount" else "PENDING",
+                    "created_at": now,
+                }
+                milestone_docs.append(m)
+            await db.payment_milestones.insert_many(
+                [{**m, "_id": m["id"]} for m in milestone_docs], **kw,
+            )
+
+        # STEP 5: Update plot → UNDER_CONSTRUCTION
+        await db.plots.update_one(
+            {"plot_no": booking["plot_no"]},
+            {"$set": {"sales_status": "UNDER_CONSTRUCTION"}},
+            **kw,
+        )
+
+        return {"project_id": project_id, "client_id": client_id}
+
+    # Execute conversion
+    if use_txn:
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                result = await _do_conversion(session=session)
+    else:
+        result = await _do_conversion()
+
+    # Handle idempotent case (already converted by concurrent request)
+    if result is None:
+        return {"message": "Already converted (concurrent request)"}
 
     await _log_activity(
         booking["lead_id"], "NOTE",
-        f"Booking converted to project by {user.full_name}. Project ID: {project_id[:8]}", user,
+        f"Booking converted to project by {user.full_name}. Project ID: {result['project_id'][:8]}", user,
     )
 
     return {
         "message": "Booking converted to project successfully",
-        "project_id": project_id,
-        "client_id": client_id,
+        "project_id": result["project_id"],
+        "client_id": result["client_id"],
         "milestones_count": len(MILESTONE_NAMES),
         "booking_status": "CONFIRMED",
         "plot_sales_status": "UNDER_CONSTRUCTION",
@@ -987,7 +1059,11 @@ async def decide_booking_approval(
     body: BookingApprovalDecision,
     user: User = Depends(require_roles(APPROVAL_VIEW_ROLES)),
 ):
-    """Approve or reject a booking at the current level."""
+    """Approve or reject a booking at the current level.
+
+    Transaction-safe: uses MongoDB multi-document transaction when replica set
+    is available. Falls back to sequential writes on standalone deployments.
+    """
     if body.decision not in ("APPROVED", "REJECTED"):
         raise HTTPException(422, "Decision must be APPROVED or REJECTED")
 
@@ -1016,9 +1092,10 @@ async def decide_booking_approval(
         )
 
     now = _now()
+    use_txn = await _supports_transactions()
 
-    if body.decision == "REJECTED":
-        # Reject: mark level, set overall to REJECTED
+    async def _do_reject(session=None):
+        """Execute rejection writes, optionally within a transaction session."""
         for lvl in doc["levels"]:
             if lvl["level"] == current:
                 lvl["status"] = "REJECTED"
@@ -1026,31 +1103,30 @@ async def decide_booking_approval(
                 lvl["decided_at"] = now
                 lvl["note"] = body.note
 
+        kw = {"session": session} if session else {}
         await db.booking_approvals.update_one(
             {"id": approval_id},
             {"$set": {"levels": doc["levels"], "overall_status": "REJECTED"}},
+            **kw,
         )
-
-        # Cancel booking and release plot
         await db.bookings.update_one(
             {"id": doc["booking_id"]},
             {"$set": {"status": "CANCELLED", "cancelled_reason": f"Rejected by {user.full_name}: {body.note or 'No reason'}"}},
+            **kw,
         )
         await db.plots.update_one(
             {"plot_no": doc["plot_no"]},
             {"$set": {"sales_status": "AVAILABLE"}, "$unset": {"sale_value_inr": "", "sold_date": ""}},
+            **kw,
         )
         await db.leads.update_one(
             {"id": doc["lead_id"]},
             {"$set": {"status": "LOST", "updated_at": now}},
-        )
-        await _log_activity(
-            doc["lead_id"], "NOTE",
-            f"Booking rejected by {user.full_name} at Level {current}: {body.note or 'N/A'}", user,
+            **kw,
         )
 
-    else:
-        # Approve current level
+    async def _do_approve(session=None):
+        """Execute approval writes, optionally within a transaction session."""
         for lvl in doc["levels"]:
             if lvl["level"] == current:
                 lvl["status"] = "APPROVED"
@@ -1058,29 +1134,53 @@ async def decide_booking_approval(
                 lvl["decided_at"] = now
                 lvl["note"] = body.note
 
-        # Check if there's a next level
+        kw = {"session": session} if session else {}
         max_level = max(lvl["level"] for lvl in doc["levels"])
         if current < max_level:
-            # Advance to next level
             await db.booking_approvals.update_one(
                 {"id": approval_id},
                 {"$set": {"levels": doc["levels"], "current_level": current + 1}},
+                **kw,
             )
+        else:
+            await db.booking_approvals.update_one(
+                {"id": approval_id},
+                {"$set": {"levels": doc["levels"], "overall_status": "APPROVED"}},
+                **kw,
+            )
+            await db.bookings.update_one(
+                {"id": doc["booking_id"]},
+                {"$set": {"status": "APPROVED"}},
+                **kw,
+            )
+        return current < max_level
+
+    if body.decision == "REJECTED":
+        if use_txn:
+            async with await client.start_session() as session:
+                async with session.start_transaction():
+                    await _do_reject(session=session)
+        else:
+            await _do_reject()
+
+        await _log_activity(
+            doc["lead_id"], "NOTE",
+            f"Booking rejected by {user.full_name} at Level {current}: {body.note or 'N/A'}", user,
+        )
+    else:
+        if use_txn:
+            async with await client.start_session() as session:
+                async with session.start_transaction():
+                    is_intermediate = await _do_approve(session=session)
+        else:
+            is_intermediate = await _do_approve()
+
+        if is_intermediate:
             await _log_activity(
                 doc["lead_id"], "NOTE",
                 f"Booking approved at Level {current} by {user.full_name}, advancing to Level {current + 1}", user,
             )
         else:
-            # Final approval
-            await db.booking_approvals.update_one(
-                {"id": approval_id},
-                {"$set": {"levels": doc["levels"], "overall_status": "APPROVED"}},
-            )
-            # Confirm booking
-            await db.bookings.update_one(
-                {"id": doc["booking_id"]},
-                {"$set": {"status": "APPROVED"}},
-            )
             await _log_activity(
                 doc["lead_id"], "NOTE",
                 f"Booking fully approved by {user.full_name}. Plot #{doc['plot_no']} sale confirmed.", user,

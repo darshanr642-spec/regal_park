@@ -285,11 +285,22 @@ class TestQuotations:
 # ---- Bookings ----
 class TestBookings:
     def test_create_booking(self, tokens):
+        # Find an available plot (demo seed may have booked some plots)
+        plots_r = requests.get(
+            f"{BASE_URL}/api/plots",
+            headers=_h(tokens["admin"]),
+        )
+        assert plots_r.status_code == 200
+        available = [p for p in plots_r.json() if p.get("sales_status") == "AVAILABLE"]
+        assert len(available) > 0, "No available plots for booking test"
+        test_plot = available[0]["plot_no"]
+        pytest.test_plot_no = test_plot
+
         r = requests.post(
             f"{BASE_URL}/api/crm/bookings",
             json={
                 "lead_id": pytest.test_lead_id,
-                "plot_no": 5,
+                "plot_no": test_plot,
                 "client_name": "TEST_CRM Lead",
                 "elevation_type": "Elora",
                 "sale_value_inr": 3675000.0,
@@ -298,10 +309,10 @@ class TestBookings:
             },
             headers=_h(tokens["admin"]),
         )
-        assert r.status_code == 200
+        assert r.status_code == 200, f"Booking failed for plot {test_plot}: {r.status_code} {r.text}"
         body = r.json()
         assert body["status"] == "PROVISIONAL"
-        assert body["plot_no"] == 5
+        assert body["plot_no"] == test_plot
         assert body["sale_value_inr"] == 3675000.0
         pytest.test_booking_id = body["id"]
 
@@ -318,7 +329,7 @@ class TestBookings:
             f"{BASE_URL}/api/crm/bookings",
             json={
                 "lead_id": pytest.test_lead_id,
-                "plot_no": 5,
+                "plot_no": pytest.test_plot_no,
                 "client_name": "Another Person",
                 "elevation_type": "Elora",
                 "sale_value_inr": 3675000.0,

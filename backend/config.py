@@ -49,6 +49,9 @@ else:
 # ── Feature flags ───────────────────────────────────────────────────
 SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
 
+# ── Redis (optional — for distributed rate limiting) ────────────────
+REDIS_URL = os.environ.get("REDIS_URL", None)  # type: Optional[str]
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 fs_bucket = AsyncIOMotorGridFSBucket(db)

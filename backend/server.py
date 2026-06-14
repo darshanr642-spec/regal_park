@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
-from config import ALLOWED_ORIGINS, SEED_DEMO_DATA, client, db, log
+from config import ALLOWED_ORIGINS, REDIS_URL, SEED_DEMO_DATA, client, db, log
 from routes import (
     auth_routes,
     checklists,
@@ -28,35 +28,13 @@ from routes import (
 )
 from seed import migrate_base64_to_gridfs, seed_crm, seed_db, seed_plots, seed_v2
 
-# ── Rate limiting (CRIT-3) ──────────────────────────────────────────
-# Three tiers: login (5/min), write (30/min), read (120/min) per IP
-from collections import defaultdict
+# ── Rate limiting (CRIT-3 → now distributed via Redis) ──────────────
+from rate_limiter import RATE_LIMITS, RateLimiter
 import time as _time
 
 _app_start_time = _time.time()
 
-_rate_buckets: dict[str, list[float]] = defaultdict(list)
-
-_RATE_LIMITS = {
-    "login": (5, 60),     # 5 requests per 60 seconds
-    "write": (30, 60),    # 30 requests per 60 seconds
-    "read": (120, 60),    # 120 requests per 60 seconds
-}
-
-
-def _check_rate(key: str, tier: str) -> bool:
-    """Return True if request is allowed, False if rate-limited."""
-    max_requests, window = _RATE_LIMITS[tier]
-    now = _time.time()
-    bucket_key = f"{tier}:{key}"
-    bucket = _rate_buckets[bucket_key]
-    # Evict expired entries
-    _rate_buckets[bucket_key] = [t for t in bucket if now - t < window]
-    bucket = _rate_buckets[bucket_key]
-    if len(bucket) >= max_requests:
-        return False
-    bucket.append(now)
-    return True
+_limiter = RateLimiter(redis_url=REDIS_URL)
 
 
 app = FastAPI(title="Regal Park Villas API")
@@ -117,7 +95,7 @@ app.add_middleware(
 )
 
 
-# ── Rate limit middleware (CRIT-3) ──────────────────────────────────
+# ── Rate limit middleware (CRIT-3 — Redis-backed) ───────────────────
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Tiered rate limiting: login=5/min, writes=30/min, reads=120/min per IP."""
@@ -132,9 +110,9 @@ async def rate_limit_middleware(request: Request, call_next):
     else:
         tier = "read"
 
-    if not _check_rate(client_ip, tier):
+    if not await _limiter.check(client_ip, tier):
         from starlette.responses import JSONResponse
-        max_req, window = _RATE_LIMITS[tier]
+        max_req, window = RATE_LIMITS[tier]
         return JSONResponse(
             status_code=429,
             content={
@@ -253,6 +231,9 @@ async def _ensure_indexes():
 
 @app.on_event("startup")
 async def on_startup():
+    # Initialize distributed rate limiter
+    await _limiter.connect()
+
     await _ensure_indexes()
 
     if SEED_DEMO_DATA:
@@ -270,4 +251,5 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    await _limiter.close()
     client.close()
