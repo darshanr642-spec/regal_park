@@ -192,6 +192,22 @@ async def _ensure_indexes():
         await db.crm_activities.create_index("lead_id")
         await db.pricing.create_index("elevation_type")
 
+        # Refresh tokens (CRIT-2)
+        await db.refresh_tokens.create_index("token", unique=True)
+        await db.refresh_tokens.create_index("user_id")
+        await db.refresh_tokens.create_index(
+            "expires_at", expireAfterSeconds=0,  # TTL: auto-delete expired tokens
+        )
+
+        # CRIT-4: Unique partial index — only one active booking per plot
+        # This prevents double-booking at the database level
+        await db.bookings.create_index(
+            [("plot_no", 1)],
+            unique=True,
+            partialFilterExpression={"status": {"$in": ["PROVISIONAL", "APPROVED", "CONFIRMED"]}},
+            name="unique_active_booking_per_plot",
+        )
+
         log.info("MongoDB indexes ensured.")
     except Exception as e:
         log.exception("Index creation failed: %s", e)

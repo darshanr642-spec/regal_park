@@ -14,7 +14,8 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ.get("DB_NAME", "regal_park_villas")
 JWT_SECRET = os.environ["JWT_SECRET"]  # required, no fallback
 JWT_ALG = "HS256"
-JWT_EXP_HOURS = 24 * 7  # 7 days
+JWT_EXP_HOURS = 1  # 1 hour (CRIT-2: was 7 days)
+REFRESH_TOKEN_DAYS = 30  # refresh token lifetime
 
 # ── JWT secret length guard ──────────────────────────────────────────
 if len(JWT_SECRET) < 32:

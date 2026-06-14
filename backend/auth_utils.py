@@ -1,4 +1,6 @@
-"""Auth utilities: password hashing, JWT, dependencies and RBAC role groups."""
+"""Auth utilities: password hashing, JWT, refresh tokens, dependencies and RBAC role groups."""
+import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -10,10 +12,60 @@ import jwt as pyjwt
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 
-from config import JWT_ALG, JWT_EXP_HOURS, JWT_SECRET, db
+from config import JWT_ALG, JWT_EXP_HOURS, JWT_SECRET, REFRESH_TOKEN_DAYS, db
 from models import ROLES, User
 
 oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+# ── Refresh token management (CRIT-2) ──────────────────────────────
+
+async def create_refresh_token(user_id: str, role: str) -> str:
+    """Create an opaque refresh token stored server-side. Returns the token string."""
+    token = secrets.token_urlsafe(48)
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "token": token,
+        "user_id": user_id,
+        "role": role,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_DAYS),
+        "revoked": False,
+    }
+    await db.refresh_tokens.insert_one(doc)
+    return token
+
+
+async def validate_refresh_token(token: str) -> dict:
+    """Validate a refresh token. Returns the token doc or raises 401."""
+    doc = await db.refresh_tokens.find_one({"token": token, "revoked": False})
+    if not doc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked refresh token")
+    # MongoDB stores naive datetimes (UTC assumed); compare with naive UTC
+    now_utc = datetime.utcnow()
+    if doc["expires_at"] < now_utc:
+        # Mark expired token as revoked for cleanup
+        await db.refresh_tokens.update_one({"_id": doc["_id"]}, {"$set": {"revoked": True}})
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token expired")
+    return doc
+
+
+async def revoke_refresh_token(token: str) -> bool:
+    """Revoke a single refresh token. Returns True if found and revoked."""
+    result = await db.refresh_tokens.update_one(
+        {"token": token, "revoked": False},
+        {"$set": {"revoked": True}},
+    )
+    return result.modified_count > 0
+
+
+async def revoke_all_user_tokens(user_id: str) -> int:
+    """Revoke all refresh tokens for a user (forced logout everywhere)."""
+    result = await db.refresh_tokens.update_many(
+        {"user_id": user_id, "revoked": False},
+        {"$set": {"revoked": True}},
+    )
+    return result.modified_count
 
 
 def hash_pw(p: str) -> str:

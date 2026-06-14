@@ -2,8 +2,10 @@ import { storage } from "@/src/utils/storage";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = "rpv_token";
+const REFRESH_KEY = "rpv_refresh_token";
 
 let cachedToken: string | null = null;
+let cachedRefresh: string | null = null;
 
 export async function getToken(): Promise<string | null> {
   if (cachedToken) return cachedToken;
@@ -11,10 +13,22 @@ export async function getToken(): Promise<string | null> {
   return cachedToken;
 }
 
+export async function getRefreshToken(): Promise<string | null> {
+  if (cachedRefresh) return cachedRefresh;
+  cachedRefresh = (await storage.secureGet<string>(REFRESH_KEY, "")) || null;
+  return cachedRefresh;
+}
+
 export async function setToken(t: string | null) {
   cachedToken = t;
   if (!t) await storage.secureRemove(TOKEN_KEY);
   else await storage.secureSet(TOKEN_KEY, t);
+}
+
+export async function setRefreshToken(t: string | null) {
+  cachedRefresh = t;
+  if (!t) await storage.secureRemove(REFRESH_KEY);
+  else await storage.secureSet(REFRESH_KEY, t);
 }
 
 /**
@@ -29,11 +43,31 @@ export function fileUri(p?: string | null): string {
   return `${BASE}${p}${sep}token=${cachedToken || ""}`;
 }
 
+/** Try to refresh the access token using the stored refresh token. */
+async function tryRefreshAccessToken(): Promise<boolean> {
+  const rt = await getRefreshToken();
+  if (!rt) return false;
+  try {
+    const res = await fetch(`${BASE}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    await setToken(data.access_token);
+    await setRefreshToken(data.refresh_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function request<T>(
   path: string,
-  opts: { method?: string; body?: any; auth?: boolean } = {},
+  opts: { method?: string; body?: any; auth?: boolean; _retried?: boolean } = {},
 ): Promise<T> {
-  const { method = "GET", body, auth = true } = opts;
+  const { method = "GET", body, auth = true, _retried = false } = opts;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (auth) {
     const tok = await getToken();
@@ -44,6 +78,15 @@ async function request<T>(
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  // Auto-refresh on 401 (CRIT-2)
+  if (res.status === 401 && auth && !_retried) {
+    const refreshed = await tryRefreshAccessToken();
+    if (refreshed) {
+      return request<T>(path, { ...opts, _retried: true });
+    }
+  }
+
   if (!res.ok) {
     let detail = `${res.status}`;
     try {
@@ -76,9 +119,21 @@ export async function uploadFile(form: FormData): Promise<{ id: string; url: str
 
 export const api = {
   login: (email: string, password: string) =>
-    request<{ access_token: string }>("/auth/login", {
+    request<{ access_token: string; refresh_token: string }>("/auth/login", {
       method: "POST",
       body: { email, password },
+      auth: false,
+    }),
+  refresh: (refresh_token: string) =>
+    request<{ access_token: string; refresh_token: string }>("/auth/refresh", {
+      method: "POST",
+      body: { refresh_token },
+      auth: false,
+    }),
+  logout: (refresh_token: string) =>
+    request<{ revoked: boolean }>("/auth/logout", {
+      method: "POST",
+      body: { refresh_token },
       auth: false,
     }),
   me: () => request<any>("/auth/me"),
