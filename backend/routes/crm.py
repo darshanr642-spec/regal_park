@@ -20,6 +20,7 @@ from models import (
     BOOKING_STATUSES,
     LEAD_SOURCES,
     LEAD_STATUSES,
+    SALES_STATUSES,
     Booking,
     BookingCreate,
     BookingUpdate,
@@ -27,6 +28,7 @@ from models import (
     Lead,
     LeadCreate,
     LeadUpdate,
+    Plot,
     Pricing,
     PricingCreate,
     Quotation,
@@ -484,3 +486,87 @@ async def _log_activity(lead_id: str, activity_type: str, description: str, user
         "created_at": _now(),
     }
     await db.crm_activities.insert_one({**doc, "_id": doc["id"]})
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  SALES INVENTORY
+# ──────────────────────────────────────────────────────────────────────
+
+@router.get("/inventory", response_model=List[Plot])
+async def list_inventory(
+    sales_status: Optional[str] = Query(None),
+    elevation_type: Optional[str] = Query(None),
+    facing: Optional[str] = Query(None),
+    price_min: Optional[float] = Query(None),
+    price_max: Optional[float] = Query(None),
+    user: User = Depends(require_roles(CRM_READ_ROLES)),
+):
+    """Sales inventory board — all plots with optional filters."""
+    filt: dict = {}
+    if sales_status:
+        filt["sales_status"] = sales_status
+    if elevation_type:
+        filt["$or"] = [
+            {"elevation_type": elevation_type},
+            {"villa_type": elevation_type},
+        ]
+    if facing:
+        filt["facing"] = facing
+    if price_min is not None:
+        filt.setdefault("asking_price_inr", {})["$gte"] = price_min
+    if price_max is not None:
+        filt.setdefault("asking_price_inr", {})["$lte"] = price_max
+
+    rows = await db.plots.find(filt, {"_id": 0}).sort("plot_no", 1).to_list(300)
+    return [Plot(**r) for r in rows]
+
+
+@router.patch("/inventory/{plot_no}/reserve")
+async def reserve_plot(plot_no: int, user: User = Depends(require_roles(CRM_ROLES))):
+    """Reserve a plot for a prospective buyer.
+
+    Prevents reserving plots that are already SOLD or BOOKED.
+    """
+    doc = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Plot not found")
+
+    current_status = doc.get("sales_status", doc.get("status", "AVAILABLE"))
+    if current_status in ("SOLD", "BOOKED"):
+        raise HTTPException(
+            409,
+            f"Plot {plot_no} is already {current_status} and cannot be reserved.",
+        )
+
+    await db.plots.update_one(
+        {"plot_no": plot_no},
+        {"$set": {"sales_status": "RESERVED", "reserved_by": user.full_name, "reserved_at": _now()}},
+    )
+    updated = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
+    return Plot(**updated)
+
+
+@router.patch("/inventory/{plot_no}/release")
+async def release_plot(plot_no: int, user: User = Depends(require_roles(CRM_ROLES))):
+    """Release a reserved plot back to AVAILABLE.
+
+    Only RESERVED plots can be released. SOLD/BOOKED plots require management action.
+    """
+    doc = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Plot not found")
+
+    current_status = doc.get("sales_status", doc.get("status", "AVAILABLE"))
+    if current_status != "RESERVED":
+        raise HTTPException(
+            409,
+            f"Plot {plot_no} is {current_status}, only RESERVED plots can be released.",
+        )
+
+    await db.plots.update_one(
+        {"plot_no": plot_no},
+        {"$set": {"sales_status": "AVAILABLE"}, "$unset": {"reserved_by": "", "reserved_at": ""}},
+    )
+    updated = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
+    return Plot(**updated)
+

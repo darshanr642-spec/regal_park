@@ -104,6 +104,9 @@ async def _ensure_indexes():
         await db.plots.create_index("plot_no", unique=True)
         await db.plots.create_index("status")
         await db.plots.create_index("elevation")
+        await db.plots.create_index("sales_status")
+        await db.plots.create_index("facing")
+        await db.plots.create_index("elevation_type")
 
         # CRM
         await db.leads.create_index("status")

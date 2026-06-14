@@ -18,11 +18,22 @@ const MENU = [
   { label: "Client Portal View", icon: "key", route: "/module/client", internal: false },
 ];
 
+const CRM_MENU = [
+  { label: "Sales Dashboard", icon: "bar-chart-2", route: "/crm/dashboard" },
+  { label: "Leads", icon: "user-plus", route: "/crm/leads" },
+  { label: "Inventory", icon: "grid", route: "/crm/inventory" },
+  { label: "Site Visits", icon: "calendar", route: "/crm/visits" },
+  { label: "Quotations", icon: "file-text", route: "/crm/quotation" },
+  { label: "Bookings", icon: "check-circle", route: "/crm/bookings" },
+  { label: "Pricing", icon: "dollar-sign", route: "/crm/pricing" },
+];
+
 export default function Profile() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const initials = (user?.full_name || "RP").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
   const menu = user?.role === "CLIENT" ? MENU.filter((m) => !m.internal) : MENU;
+  const showCrm = user?.role !== "CLIENT";
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -50,6 +61,24 @@ export default function Profile() {
             <Feather name="chevron-right" size={18} color={colors.muted} />
           </Pressable>
         ))}
+
+        {showCrm && (
+          <>
+            <Text style={styles.sectionHead}>CRM & SALES</Text>
+            {CRM_MENU.map((m) => (
+              <Pressable
+                key={m.label}
+                testID={`crm-${m.label.replace(/[\s&]+/g, "-").toLowerCase()}`}
+                style={styles.row}
+                onPress={() => router.push(m.route as any)}
+              >
+                <View style={styles.rowIcon}><Feather name={m.icon as any} size={18} color={colors.success} /></View>
+                <Text style={styles.rowLabel}>{m.label}</Text>
+                <Feather name="chevron-right" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </>
+        )}
 
         <Text style={styles.sectionHead}>ACCOUNT</Text>
         <Pressable testID="logout-button" style={[styles.row, styles.logout]} onPress={logout}>

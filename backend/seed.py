@@ -631,16 +631,31 @@ PLOT_PROJECT_LINKS = {
 async def seed_plots():
     if await db.plots.count_documents({}) > 0:
         return
+
+    # Base asking prices by villa type (from pricing seed)
+    BASE_PRICES = {"Elora": 12750000, "Selora": 13800000, "Avira": 11700000, "Riora": 10800000}
+    FACINGS = ["NORTH", "SOUTH", "EAST", "WEST", "NORTH_EAST", "NORTH_WEST", "SOUTH_EAST", "SOUTH_WEST"]
+
     docs = []
     for n in range(1, 252):
         vtype = _villa_type_for_plot(n)
         project_id = PLOT_PROJECT_LINKS.get(n)
         if project_id:
             status_v = "UNDER_CONSTRUCTION"
+            sales_status = "UNDER_CONSTRUCTION"
         elif n % 7 in (0, 1):
             status_v = "SOLD"
+            sales_status = "SOLD"
         else:
             status_v = "AVAILABLE"
+            sales_status = "AVAILABLE"
+
+        is_corner = n % 10 in (0, 1)  # ~20% corner plots
+        facing = FACINGS[n % len(FACINGS)]
+        premium = 5.0 if is_corner else 0.0
+        base = BASE_PRICES.get(vtype, 10000000)
+        asking = base * (1 + premium / 100)
+
         docs.append({
             "id": str(uuid.uuid4()),
             "plot_no": n,
@@ -648,6 +663,12 @@ async def seed_plots():
             "dimension_ft": ELEVATION_DIMENSIONS[vtype],
             "status": status_v,
             "project_id": project_id,
+            "sales_status": sales_status,
+            "asking_price_inr": asking,
+            "premium_pct": premium,
+            "facing": facing,
+            "is_corner": is_corner,
+            "elevation_type": vtype,
         })
     await db.plots.insert_many(docs)
     log.info("Seed v3: %d layout plots.", len(docs))

@@ -151,6 +151,62 @@ export const api = {
   // Layout plan plots
   plots: () => request<any[]>("/plots"),
   plot: (plotNo: number) => request<any>(`/plots/${plotNo}`),
+
+  // CRM — Pricing
+  crmPricing: () => request<any[]>("/crm/pricing"),
+  crmUpsertPricing: (body: any) =>
+    request<any>("/crm/pricing", { method: "PUT", body }),
+
+  // CRM — Leads
+  crmLeads: (params?: Record<string, string>) => {
+    const qs = params
+      ? "?" + Object.entries(params).map(([k, v]) => `${k}=${v}`).join("&")
+      : "";
+    return request<any[]>(`/crm/leads${qs}`);
+  },
+  crmLead: (id: string) => request<any>(`/crm/leads/${id}`),
+  crmCreateLead: (body: any) =>
+    request<any>("/crm/leads", { method: "POST", body }),
+  crmUpdateLead: (id: string, body: any) =>
+    request<any>(`/crm/leads/${id}`, { method: "PATCH", body }),
+  crmLeadTimeline: (id: string) =>
+    request<any[]>(`/crm/leads/${id}/timeline`),
+
+  // CRM — Site Visits
+  crmSiteVisits: (leadId?: string) =>
+    request<any[]>(`/crm/site-visits${leadId ? `?lead_id=${leadId}` : ""}`),
+  crmCreateSiteVisit: (body: any) =>
+    request<any>("/crm/site-visits", { method: "POST", body }),
+  crmUpdateSiteVisit: (id: string, body: any) =>
+    request<any>(`/crm/site-visits/${id}`, { method: "PATCH", body }),
+
+  // CRM — Quotations
+  crmQuotations: (leadId?: string) =>
+    request<any[]>(`/crm/quotations${leadId ? `?lead_id=${leadId}` : ""}`),
+  crmCreateQuotation: (body: any) =>
+    request<any>("/crm/quotations", { method: "POST", body }),
+
+  // CRM — Bookings
+  crmBookings: (status?: string) =>
+    request<any[]>(`/crm/bookings${status ? `?status=${status}` : ""}`),
+  crmBooking: (id: string) => request<any>(`/crm/bookings/${id}`),
+  crmCreateBooking: (body: any) =>
+    request<any>("/crm/bookings", { method: "POST", body }),
+  crmUpdateBooking: (id: string, body: any) =>
+    request<any>(`/crm/bookings/${id}`, { method: "PATCH", body }),
+
+  // CRM — Dashboard
+  crmDashboard: () => request<any>("/crm/dashboard"),
+
+  // CRM — Inventory
+  crmInventory: (params?: Record<string, string>) => {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return request<any[]>(`/crm/inventory${qs}`);
+  },
+  crmReservePlot: (plotNo: number) =>
+    request<any>(`/crm/inventory/${plotNo}/reserve`, { method: "PATCH" }),
+  crmReleasePlot: (plotNo: number) =>
+    request<any>(`/crm/inventory/${plotNo}/release`, { method: "PATCH" }),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

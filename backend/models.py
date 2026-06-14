@@ -231,6 +231,10 @@ class Approval(BaseModel):
     date: Optional[str] = None
 
 
+SALES_STATUSES = ["AVAILABLE", "RESERVED", "BOOKED", "SOLD", "UNDER_CONSTRUCTION"]
+PLOT_FACINGS = ["NORTH", "SOUTH", "EAST", "WEST", "NORTH_EAST", "NORTH_WEST", "SOUTH_EAST", "SOUTH_WEST"]
+
+
 class Plot(BaseModel):
     id: str
     plot_no: int
@@ -238,6 +242,13 @@ class Plot(BaseModel):
     dimension_ft: str  # e.g. "40 x 50"
     status: str  # AVAILABLE / SOLD / UNDER_CONSTRUCTION / COMPLETED
     project_id: Optional[str] = None
+    # Sales fields
+    sales_status: str = "AVAILABLE"
+    asking_price_inr: float = 0.0
+    premium_pct: float = 0.0
+    facing: Optional[str] = None
+    is_corner: bool = False
+    elevation_type: Optional[str] = None
 
 
 # ---- Procurement: Purchase Orders ----
