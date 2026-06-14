@@ -9,6 +9,7 @@ ROLES = [
     "LANDSCAPE_ARCHITECT", "PLANNING_ENGINEER", "QUANTITY_SURVEYOR",
     "PROCUREMENT_MANAGER", "SITE_ENGINEER", "SAFETY_OFFICER",
     "STORE_KEEPER", "ACCOUNTANT", "CONTRACTOR", "CLIENT", "CRM_SALES",
+    "LANDOWNER",
 ]
 
 
@@ -269,6 +270,7 @@ class Plot(BaseModel):
     facing: Optional[str] = None
     is_corner: bool = False
     elevation_type: Optional[str] = None
+    landowner_id: Optional[str] = None
 
 
 # ---- Procurement: Purchase Orders ----

@@ -19,6 +19,7 @@ from routes import (
     documents,
     files,
     inventory,
+    landowner,
     plots,
     portal,
     procurement,
@@ -103,6 +104,7 @@ api.include_router(crm.router)
 api.include_router(portal.router)
 api.include_router(coo.router)
 api.include_router(inventory.router)
+api.include_router(landowner.router)
 
 app.include_router(api)
 

@@ -21,6 +21,7 @@ SEED_USERS = [
     ("qs", "Qs@123", "Sneha Pillai", "QUANTITY_SURVEYOR", "Regal Park Developers", "+91 98450 11009"),
     ("safety", "Safety@123", "Joseph D'Souza", "SAFETY_OFFICER", "Regal Park Developers", "+91 98450 11010"),
     ("client", "Client@123", "Mr. & Mrs. Aravind Rao", "CLIENT", "Self", "+91 98450 11011"),
+    ("landowner", "Landowner@123", "Shri Ramachandra Gowda", "LANDOWNER", "Gowda Family Trust", "+91 98450 11030"),
 ]
 
 # Build full email at runtime to avoid file-level email obfuscation issues

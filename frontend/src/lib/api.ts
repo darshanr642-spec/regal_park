@@ -298,6 +298,9 @@ export const api = {
 
   // Inventory Command Center
   inventoryCommandCenter: () => request<any>("/inventory/command-center"),
+
+  // Landowner Dashboard
+  landownerDashboard: () => request<any>("/landowner/dashboard"),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {
