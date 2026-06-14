@@ -8,6 +8,7 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/lib/auth";
 import { ProjectProvider } from "@/src/lib/project";
 import { BrandSplash } from "@/src/components/BrandSplash";
+import { RouteGuard } from "@/src/components/RouteGuard";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,7 +28,9 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <AuthProvider>
         <ProjectProvider>
-          <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+          <RouteGuard>
+            <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+          </RouteGuard>
           <BrandSplash />
         </ProjectProvider>
       </AuthProvider>

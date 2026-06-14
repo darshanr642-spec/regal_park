@@ -1,11 +1,14 @@
-import { Tabs, Redirect } from "expo-router";
+import { Tabs, Redirect, usePathname } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/src/lib/auth";
+import { isRoleAllowed, getHomeForRole, isInternalRole } from "@/src/lib/roles";
 import { colors } from "@/src/lib/theme";
 import { ActivityIndicator, View } from "react-native";
 
 export default function TabsLayout() {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
+
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }}>
@@ -14,6 +17,12 @@ export default function TabsLayout() {
     );
   }
   if (!user) return <Redirect href="/login" />;
+
+  // Route guard: non-internal roles (CLIENT, LANDOWNER) cannot access tabs
+  if (!isInternalRole(user.role)) {
+    const home = getHomeForRole(user.role);
+    return <Redirect href={home as any} />;
+  }
 
   return (
     <Tabs

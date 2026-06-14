@@ -544,6 +544,7 @@ async def seed_crm():
                 "premium_zones": [
                     {"plot_range_start": 100, "plot_range_end": 110, "premium_pct": 5.0},
                 ],
+                "landowner_share_pct": 35.0, "developer_share_pct": 65.0,
                 "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
@@ -552,6 +553,7 @@ async def seed_crm():
                 "base_price_per_sqft_inr": 9200.0,
                 "premium_pct": 0.0,
                 "premium_zones": [],
+                "landowner_share_pct": 30.0, "developer_share_pct": 70.0,
                 "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
@@ -562,6 +564,7 @@ async def seed_crm():
                 "premium_zones": [
                     {"plot_range_start": 1, "plot_range_end": 20, "premium_pct": 3.0},
                 ],
+                "landowner_share_pct": 35.0, "developer_share_pct": 65.0,
                 "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
             {
@@ -570,6 +573,7 @@ async def seed_crm():
                 "base_price_per_sqft_inr": 7200.0,
                 "premium_pct": 0.0,
                 "premium_zones": [],
+                "landowner_share_pct": 25.0, "developer_share_pct": 75.0,
                 "valid_from": "2026-01-01", "valid_until": None, "status": "ACTIVE",
             },
         ]

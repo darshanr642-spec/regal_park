@@ -174,11 +174,30 @@ async def landowner_dashboard(user: User = Depends(require_roles(LANDOWNER_ROLES
     available = status_counts.get("AVAILABLE", 0)
     sold_count = total - available
 
-    # Landowner share estimate (default 30% if not set)
-    default_share = 30
-    landowner_revenue = total_sold_value * (default_share / 100)
-    landowner_collected = total_collected * (default_share / 100)
-    landowner_pending = total_pending * (default_share / 100)
+    # Per-plot weighted landowner share from pricing database
+    landowner_revenue = 0
+    landowner_collected = 0
+    landowner_pending = 0
+    share_sum = 0
+    share_count = 0
+
+    for ep in enriched:
+        share = ep.get("landowner_share_pct", 0)
+        sale_val = ep.get("sale_value_inr", 0) or 0
+        rev_collected = ep.get("revenue_collected", 0)
+        rev_pending = ep.get("revenue_pending", 0)
+        ss = ep.get("sales_status", "AVAILABLE")
+
+        if share > 0:
+            share_sum += share
+            share_count += 1
+
+        if ss in ("SOLD", "BOOKED", "UNDER_CONSTRUCTION", "CONFIRMED"):
+            landowner_revenue += (sale_val or ep.get("asking_price_inr", 0)) * share / 100
+            landowner_collected += rev_collected * share / 100
+            landowner_pending += rev_pending * share / 100
+
+    avg_share = round(share_sum / share_count, 1) if share_count else 0
 
     kpis = {
         "total_plots": total,
@@ -191,10 +210,10 @@ async def landowner_dashboard(user: User = Depends(require_roles(LANDOWNER_ROLES
         "total_sold_value": total_sold_value,
         "total_collected": total_collected,
         "total_pending": total_pending,
-        "landowner_share_pct": default_share,
-        "landowner_revenue_inr": landowner_revenue,
-        "landowner_collected_inr": landowner_collected,
-        "landowner_pending_inr": landowner_pending,
+        "landowner_share_pct": avg_share,
+        "landowner_revenue_inr": round(landowner_revenue, 2),
+        "landowner_collected_inr": round(landowner_collected, 2),
+        "landowner_pending_inr": round(landowner_pending, 2),
         "absorption_rate": round(sold_count / total * 100, 1) if total else 0,
     }
 

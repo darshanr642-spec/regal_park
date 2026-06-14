@@ -398,6 +398,8 @@ class Pricing(BaseModel):
     base_price_per_sqft_inr: float
     premium_pct: float = 0.0  # flat premium percentage
     premium_zones: List[PremiumZone] = []
+    landowner_share_pct: float = 30.0  # landowner revenue share
+    developer_share_pct: float = 70.0  # developer revenue share
     valid_from: str
     valid_until: Optional[str] = None
     status: str = "ACTIVE"  # ACTIVE / EXPIRED / DRAFT
@@ -409,6 +411,8 @@ class PricingCreate(BaseModel):
     base_price_per_sqft_inr: float
     premium_pct: float = 0.0
     premium_zones: List[PremiumZone] = []
+    landowner_share_pct: float = 30.0
+    developer_share_pct: float = 70.0
     valid_from: str
     valid_until: Optional[str] = None
     status: str = "ACTIVE"

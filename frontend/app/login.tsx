@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth";
+import { getHomeForRole } from "@/src/lib/roles";
 import { colors, font, radii, spacing } from "@/src/lib/theme";
 
 // Demo accounts — only visible in development builds (CRIT-6)
@@ -26,6 +27,7 @@ const DEMO_ACCOUNTS = __DEV__
       { label: "Project Manager", email: "manager@regalpark.com", pw: "Manager@123" },
       { label: "Site Engineer", email: "siteengineer@regalpark.com", pw: "Site@123" },
       { label: "Client", email: "client@regalpark.com", pw: "Client@123" },
+      { label: "Landowner", email: "landowner@regalpark.com", pw: "Landowner@123" },
     ]
   : [];
 
@@ -41,8 +43,9 @@ export default function Login() {
     setErr(null);
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      router.replace("/(tabs)");
+      const user = await login(email.trim(), password);
+      const home = getHomeForRole(user.role);
+      router.replace(home as any);
     } catch (e: any) {
       setErr(e.message || "Login failed");
     } finally {

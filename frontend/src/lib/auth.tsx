@@ -13,7 +13,7 @@ type User = {
 type AuthCtx = {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
 };
 
@@ -61,12 +61,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     bootstrap();
   }, [bootstrap]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<User> => {
     const { access_token, refresh_token } = await api.login(email, password);
     await setToken(access_token);
     await setRefreshToken(refresh_token);
     const me = await api.me();
     setUser(me);
+    return me;
   }, []);
 
   const logout = useCallback(async () => {
