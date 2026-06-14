@@ -1,6 +1,7 @@
 """Shared configuration: env, database client, logging."""
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,6 +15,26 @@ DB_NAME = os.environ.get("DB_NAME", "regal_park_villas")
 JWT_SECRET = os.environ["JWT_SECRET"]  # required, no fallback
 JWT_ALG = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7 days
+
+# ── JWT secret length guard ──────────────────────────────────────────
+if len(JWT_SECRET) < 32:
+    print(
+        "FATAL: JWT_SECRET must be at least 32 characters. "
+        f"Current length: {len(JWT_SECRET)}. "
+        "Set a strong secret in backend/.env",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# ── CORS allowed origins ────────────────────────────────────────────
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS: list[str] = (
+    ["*"] if _raw_origins.strip() == "*"
+    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+)
+
+# ── Feature flags ───────────────────────────────────────────────────
+SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]

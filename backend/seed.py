@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from auth_utils import hash_pw
-from config import db, fs_bucket, log
+from config import SEED_DEMO_DATA, db, fs_bucket, log
 
 SEED_USERS = [
     ("admin", "Admin@123", "Arvind Mehta", "ADMIN", "Regal Park Developers", "+91 98450 11001"),
@@ -229,6 +229,11 @@ async def seed_db():
     if await db.users.count_documents({}) > 0:
         log.info("Seed: users already present, skipping core seed.")
         return
+
+    log.warning(
+        "⚠️  SEED_DEMO_DATA is enabled — inserting demo users with default passwords. "
+        "Disable in production by setting SEED_DEMO_DATA=false."
+    )
 
     user_docs = []
     for username, pw, name, role, company, phone in SEED_USERS:
@@ -520,6 +525,67 @@ async def seed_v2():
         })
         await db.stage_checklists.insert_many(cl_docs)
         log.info("Seed v2: %d stage checklists.", len(cl_docs))
+
+
+async def seed_crm():
+    """Seed CRM pricing + demo leads if empty."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if await db.pricing.count_documents({}) == 0:
+        pricing_docs = [
+            {
+                "id": str(uuid.uuid4()), "elevation_type": "Elora",
+                "base_price_per_sqft_inr": 8500.0,
+                "premium_zones": [
+                    {"plot_range_start": 100, "plot_range_end": 110, "premium_pct": 5.0},
+                ],
+                "valid_from": "2026-01-01", "valid_until": None,
+            },
+            {
+                "id": str(uuid.uuid4()), "elevation_type": "Selora",
+                "base_price_per_sqft_inr": 9200.0,
+                "premium_zones": [],
+                "valid_from": "2026-01-01", "valid_until": None,
+            },
+            {
+                "id": str(uuid.uuid4()), "elevation_type": "Avira",
+                "base_price_per_sqft_inr": 7800.0,
+                "premium_zones": [
+                    {"plot_range_start": 1, "plot_range_end": 20, "premium_pct": 3.0},
+                ],
+                "valid_from": "2026-01-01", "valid_until": None,
+            },
+            {
+                "id": str(uuid.uuid4()), "elevation_type": "Riora",
+                "base_price_per_sqft_inr": 7200.0,
+                "premium_zones": [],
+                "valid_from": "2026-01-01", "valid_until": None,
+            },
+        ]
+        await db.pricing.insert_many([{**d, "_id": d["id"]} for d in pricing_docs])
+        log.info("Seed CRM: %d pricing entries.", len(pricing_docs))
+
+    if await db.leads.count_documents({}) == 0:
+        admin_doc = await db.users.find_one({"role": "ADMIN"}, {"_id": 0, "id": 1})
+        admin_id = admin_doc["id"] if admin_doc else "system"
+        lead_defs = [
+            ("Rajesh Sharma", "+91 98765 43210", "WALK_IN", "Elora", "₹3.5-4.5 Cr", "SITE_VISIT_DONE"),
+            ("Priya Kapoor", "+91 87654 32109", "REFERRAL", "Selora", "₹4-5 Cr", "NEGOTIATION"),
+            ("Amit Patel", "+91 76543 21098", "WEBSITE", "Avira", "₹3-3.5 Cr", "NEW"),
+            ("Deepa Nair", "+91 65432 10987", "AD", "Riora", "₹2.5-3 Cr", "CONTACTED"),
+            ("Suresh Reddy", "+91 54321 09876", "BROKER", "Elora", "₹4-5 Cr", "SITE_VISIT_SCHEDULED"),
+        ]
+        lead_docs = []
+        for name, phone, source, elev, budget, status_v in lead_defs:
+            lead_docs.append({
+                "id": str(uuid.uuid4()), "full_name": name, "phone": phone,
+                "email": None, "source": source, "interested_elevation": elev,
+                "budget_range_inr": budget, "status": status_v,
+                "assigned_to": admin_id, "notes": f"Demo lead — {source}",
+                "created_at": now, "updated_at": now,
+            })
+        await db.leads.insert_many([{**d, "_id": d["id"]} for d in lead_docs])
+        log.info("Seed CRM: %d demo leads.", len(lead_docs))
 
 
 DATA_URI_RE = re.compile(r"^data:(.+?);base64,(.+)$", re.DOTALL)
