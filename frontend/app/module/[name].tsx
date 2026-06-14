@@ -395,4 +395,7 @@ const styles = StyleSheet.create({
   docBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radii.pill },
   docBtnTxt: { color: colors.brand, fontSize: 10, letterSpacing: 1.2, fontWeight: "600" },
   emptyTxt: { color: colors.muted, fontSize: 13, textAlign: "center", paddingVertical: spacing.xl, fontStyle: "italic" },
+  paginationCount: { color: colors.muted, fontSize: 11, textAlign: "center", marginBottom: spacing.sm },
+  loadMoreBtn: { alignItems: "center", padding: spacing.md, backgroundColor: colors.surfaceInverse, borderRadius: radii.md, marginTop: spacing.sm },
+  loadMoreTxt: { color: colors.brandSecondary, fontSize: 12, fontWeight: "700", letterSpacing: 1 },
 });
