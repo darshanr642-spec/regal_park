@@ -31,7 +31,9 @@ from seed import migrate_base64_to_gridfs, seed_crm, seed_db, seed_plots, seed_v
 from collections import defaultdict
 import time as _time
 
-_rate_buckets: dict[str, list] = defaultdict(list)
+_app_start_time = _time.time()
+
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
 
 _RATE_LIMITS = {
     "login": (5, 60),     # 5 requests per 60 seconds
@@ -58,25 +60,31 @@ def _check_rate(key: str, tier: str) -> bool:
 app = FastAPI(title="Regal Park Villas API")
 api = APIRouter(prefix="/api")
 
+_VERSION = "1.0.0"
+
 
 @api.get("/")
 async def root():
-    return {"app": "Regal Park Villas", "company": "Sterlitee Developers LLP", "status": "ok"}
+    return {"app": "Regal Park Villas", "company": "Sterlitee Developers LLP", "version": _VERSION, "status": "ok"}
 
 
 @api.get("/health")
 async def health():
-    """Health check — verifies API + MongoDB connectivity."""
+    """Health check — verifies API + MongoDB connectivity. Used by Docker, K8s, and monitoring."""
     try:
         result = await db.command("ping")
         mongo_ok = result.get("ok") == 1.0
     except Exception:
         mongo_ok = False
 
+    uptime_s = round(_time.time() - _app_start_time)
     return {
         "status": "healthy" if mongo_ok else "degraded",
+        "version": _VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": uptime_s,
         "mongo": "connected" if mongo_ok else "unreachable",
+        "environment": "production" if not SEED_DEMO_DATA else "development",
         "seed_demo_data": SEED_DEMO_DATA,
     }
 
@@ -132,6 +140,32 @@ async def rate_limit_middleware(request: Request, call_next):
         )
 
     response: Response = await call_next(request)
+    return response
+
+
+# ── Request logging middleware (production monitoring) ───────────────
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Log every request with method, path, status, and duration."""
+    path = request.url.path
+    # Skip health check noise
+    if path in ("/api/health", "/api/"):
+        return await call_next(request)
+
+    start = _time.time()
+    response: Response = await call_next(request)
+    duration_ms = round((_time.time() - start) * 1000, 1)
+
+    client_ip = request.client.host if request.client else "unknown"
+    log.info(
+        "request_log | %s %s | %d | %.1fms | ip=%s",
+        request.method, path, response.status_code, duration_ms, client_ip,
+    )
+
+    # Warn on slow requests (> 2s)
+    if duration_ms > 2000:
+        log.warning("slow_request | %s %s | %.1fms", request.method, path, duration_ms)
+
     return response
 
 
