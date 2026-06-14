@@ -25,6 +25,7 @@ const CRM_MENU = [
   { label: "Site Visits", icon: "calendar", route: "/crm/visits" },
   { label: "Quotations", icon: "file-text", route: "/crm/quotation" },
   { label: "Bookings", icon: "check-circle", route: "/crm/bookings" },
+  { label: "Booking Approvals", icon: "shield", route: "/approvals/bookings" },
   { label: "Pricing", icon: "dollar-sign", route: "/crm/pricing" },
 ];
 

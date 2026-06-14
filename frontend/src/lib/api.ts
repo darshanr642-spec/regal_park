@@ -211,6 +211,14 @@ export const api = {
     request<any>(`/crm/inventory/${plotNo}/reserve`, { method: "PATCH" }),
   crmReleasePlot: (plotNo: number) =>
     request<any>(`/crm/inventory/${plotNo}/release`, { method: "PATCH" }),
+
+  // CRM — Booking Approvals
+  bookingApprovals: (status?: string) =>
+    request<any[]>(`/crm/booking-approvals${status ? `?status=${status}` : ""}`),
+  bookingApproval: (id: string) =>
+    request<any>(`/crm/booking-approvals/${id}`),
+  decideBookingApproval: (id: string, body: { decision: string; note?: string }) =>
+    request<any>(`/crm/booking-approvals/${id}/decide`, { method: "POST", body }),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

@@ -539,3 +539,35 @@ class CrmActivity(BaseModel):
     description: str
     created_by: str
     created_at: str
+
+
+# ---- CRM: Booking Approvals ----
+APPROVAL_STATUSES = ["PENDING", "APPROVED", "REJECTED"]
+
+
+class ApprovalLevel(BaseModel):
+    level: int
+    required_role: str  # SALES_MANAGER / PROJECT_DIRECTOR / COO / ADMIN
+    status: str = "PENDING"
+    decided_by: Optional[str] = None
+    decided_at: Optional[str] = None
+    note: Optional[str] = None
+
+
+class BookingApproval(BaseModel):
+    id: str
+    booking_id: str
+    lead_id: str
+    plot_no: int
+    client_name: str
+    sale_value_inr: float
+    elevation_type: str
+    levels: List[ApprovalLevel]
+    current_level: int = 1
+    overall_status: str = "PENDING"  # PENDING / APPROVED / REJECTED
+    created_at: str
+
+
+class BookingApprovalDecision(BaseModel):
+    decision: str  # APPROVED / REJECTED
+    note: Optional[str] = None

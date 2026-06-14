@@ -23,7 +23,10 @@ from models import (
     LEAD_SOURCES,
     LEAD_STATUSES,
     SALES_STATUSES,
+    ApprovalLevel,
     Booking,
+    BookingApproval,
+    BookingApprovalDecision,
     BookingCreate,
     BookingUpdate,
     CrmActivity,
@@ -493,6 +496,10 @@ async def create_booking(body: BookingCreate, user: User = Depends(require_roles
         body.lead_id, "NOTE",
         f"Booking created for Plot #{body.plot_no}, ₹{body.sale_value_inr:,.0f} ({body.discount_pct}% discount)", user,
     )
+
+    # Auto-create approval chain
+    await _create_booking_approval(doc, lead)
+
     return Booking(**doc)
 
 
@@ -698,4 +705,189 @@ async def release_plot(plot_no: int, user: User = Depends(require_roles(CRM_ROLE
     )
     updated = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
     return Plot(**updated)
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  BOOKING APPROVALS
+# ──────────────────────────────────────────────────────────────────────
+
+async def _create_booking_approval(booking: dict, lead: dict):
+    """Build approval chain based on sale_value_inr and persist."""
+    value = booking["sale_value_inr"]
+    levels = [
+        ApprovalLevel(level=1, required_role="SALES_MANAGER").model_dump(),
+    ]
+    if value > 30_000_000:
+        levels.append(ApprovalLevel(level=2, required_role="PROJECT_DIRECTOR").model_dump())
+    if value > 50_000_000:
+        levels.append(ApprovalLevel(level=3, required_role="COO").model_dump())
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "booking_id": booking["id"],
+        "lead_id": booking["lead_id"],
+        "plot_no": booking["plot_no"],
+        "client_name": booking["client_name"],
+        "sale_value_inr": value,
+        "elevation_type": booking["elevation_type"],
+        "levels": levels,
+        "current_level": 1,
+        "overall_status": "PENDING",
+        "created_at": _now(),
+    }
+    await db.booking_approvals.insert_one({**doc, "_id": doc["id"]})
+    return doc
+
+
+# Roles allowed to view approvals
+APPROVAL_VIEW_ROLES = {"ADMIN", "COO", "PROJECT_DIRECTOR", "SALES_MANAGER"}
+
+
+@router.get("/booking-approvals", response_model=List[BookingApproval])
+async def list_booking_approvals(
+    status: Optional[str] = Query(None),
+    user: User = Depends(require_roles(APPROVAL_VIEW_ROLES)),
+):
+    """List booking approvals — filterable by status. Each user sees only
+    approvals where their role is the required_role for the current level,
+    or all if ADMIN."""
+    filt: dict = {}
+    if status:
+        filt["overall_status"] = status
+
+    rows = await db.booking_approvals.find(filt, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+    # Filter to show only approvals actionable by this user's role
+    if user.role != "ADMIN":
+        rows = [
+            r for r in rows
+            if r["overall_status"] == "PENDING"
+            and any(
+                lvl["level"] == r["current_level"] and lvl["required_role"] == user.role
+                for lvl in r["levels"]
+            )
+            or r["overall_status"] != "PENDING"  # show completed ones to all viewers
+        ]
+
+    return [BookingApproval(**r) for r in rows]
+
+
+@router.get("/booking-approvals/{approval_id}", response_model=BookingApproval)
+async def get_booking_approval(
+    approval_id: str,
+    user: User = Depends(require_roles(APPROVAL_VIEW_ROLES)),
+):
+    doc = await db.booking_approvals.find_one({"id": approval_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Approval not found")
+    return BookingApproval(**doc)
+
+
+@router.post("/booking-approvals/{approval_id}/decide", response_model=BookingApproval)
+async def decide_booking_approval(
+    approval_id: str,
+    body: BookingApprovalDecision,
+    user: User = Depends(require_roles(APPROVAL_VIEW_ROLES)),
+):
+    """Approve or reject a booking at the current level."""
+    if body.decision not in ("APPROVED", "REJECTED"):
+        raise HTTPException(422, "Decision must be APPROVED or REJECTED")
+
+    doc = await db.booking_approvals.find_one({"id": approval_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Approval not found")
+    if doc["overall_status"] != "PENDING":
+        raise HTTPException(409, f"Approval is already {doc['overall_status']}")
+
+    # Verify user has permission for current level
+    current = doc["current_level"]
+    current_level_data = None
+    for lvl in doc["levels"]:
+        if lvl["level"] == current:
+            current_level_data = lvl
+            break
+
+    if not current_level_data:
+        raise HTTPException(500, "Approval chain is corrupted")
+
+    # ADMIN can approve at any level; otherwise must match required_role
+    if user.role != "ADMIN" and user.role != current_level_data["required_role"]:
+        raise HTTPException(
+            403,
+            f"Level {current} requires {current_level_data['required_role']}, you are {user.role}",
+        )
+
+    now = _now()
+
+    if body.decision == "REJECTED":
+        # Reject: mark level, set overall to REJECTED
+        for lvl in doc["levels"]:
+            if lvl["level"] == current:
+                lvl["status"] = "REJECTED"
+                lvl["decided_by"] = user.full_name
+                lvl["decided_at"] = now
+                lvl["note"] = body.note
+
+        await db.booking_approvals.update_one(
+            {"id": approval_id},
+            {"$set": {"levels": doc["levels"], "overall_status": "REJECTED"}},
+        )
+
+        # Cancel booking and release plot
+        await db.bookings.update_one(
+            {"id": doc["booking_id"]},
+            {"$set": {"status": "CANCELLED", "cancelled_reason": f"Rejected by {user.full_name}: {body.note or 'No reason'}"}},
+        )
+        await db.plots.update_one(
+            {"plot_no": doc["plot_no"]},
+            {"$set": {"sales_status": "AVAILABLE"}, "$unset": {"sale_value_inr": "", "sold_date": ""}},
+        )
+        await db.leads.update_one(
+            {"id": doc["lead_id"]},
+            {"$set": {"status": "LOST", "updated_at": now}},
+        )
+        await _log_activity(
+            doc["lead_id"], "NOTE",
+            f"Booking rejected by {user.full_name} at Level {current}: {body.note or 'N/A'}", user,
+        )
+
+    else:
+        # Approve current level
+        for lvl in doc["levels"]:
+            if lvl["level"] == current:
+                lvl["status"] = "APPROVED"
+                lvl["decided_by"] = user.full_name
+                lvl["decided_at"] = now
+                lvl["note"] = body.note
+
+        # Check if there's a next level
+        max_level = max(lvl["level"] for lvl in doc["levels"])
+        if current < max_level:
+            # Advance to next level
+            await db.booking_approvals.update_one(
+                {"id": approval_id},
+                {"$set": {"levels": doc["levels"], "current_level": current + 1}},
+            )
+            await _log_activity(
+                doc["lead_id"], "NOTE",
+                f"Booking approved at Level {current} by {user.full_name}, advancing to Level {current + 1}", user,
+            )
+        else:
+            # Final approval
+            await db.booking_approvals.update_one(
+                {"id": approval_id},
+                {"$set": {"levels": doc["levels"], "overall_status": "APPROVED"}},
+            )
+            # Confirm booking
+            await db.bookings.update_one(
+                {"id": doc["booking_id"]},
+                {"$set": {"status": "APPROVED"}},
+            )
+            await _log_activity(
+                doc["lead_id"], "NOTE",
+                f"Booking fully approved by {user.full_name}. Plot #{doc['plot_no']} sale confirmed.", user,
+            )
+
+    updated = await db.booking_approvals.find_one({"id": approval_id}, {"_id": 0})
+    return BookingApproval(**updated)
 
