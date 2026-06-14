@@ -294,6 +294,9 @@ export const api = {
   cooPortfolio: () => request<any>("/coo/portfolio"),
   cooProjectsHealth: () => request<any[]>("/coo/projects-health"),
   cooRiskRegister: () => request<any>("/coo/risk-register"),
+
+  // Inventory Command Center
+  inventoryCommandCenter: () => request<any>("/inventory/command-center"),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {
