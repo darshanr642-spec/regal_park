@@ -9,7 +9,9 @@ from config import SEED_DEMO_DATA, db, fs_bucket, log
 
 SEED_USERS = [
     ("admin", "Admin@123", "Arvind Mehta", "ADMIN", "Regal Park Developers", "+91 98450 11001"),
+    ("coo", "Coo@123", "Sunita Venkatesh", "COO", "Sterlitee Developers LLP", "+91 98450 11020"),
     ("director", "Director@123", "Rajeev Nair", "PROJECT_DIRECTOR", "Regal Park Developers", "+91 98450 11002"),
+    ("salesmgr", "SalesMgr@123", "Deepak Gupta", "SALES_MANAGER", "Regal Park Developers", "+91 98450 11021"),
     ("manager", "Manager@123", "Vikram Shetty", "PROJECT_MANAGER", "Regal Park Developers", "+91 98450 11003"),
     ("architect", "Architect@123", "Anita Krishnan", "ARCHITECT", "Studio Atelier", "+91 98450 11004"),
     ("siteengineer", "Site@123", "Karthik Reddy", "SITE_ENGINEER", "Regal Park Developers", "+91 98450 11005"),

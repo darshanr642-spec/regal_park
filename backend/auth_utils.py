@@ -2,8 +2,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 import bcrypt
+# pyrefly: ignore [missing-import]
 import jwt as pyjwt
+# pyrefly: ignore [missing-import]
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 
@@ -42,6 +45,8 @@ async def _user_from_token(token: str) -> User:
     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "hashed_password": 0})
     if not doc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    if not doc.get("is_active", True):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Account deactivated")
     return User(**doc)
 
 
@@ -89,3 +94,9 @@ def require_roles(allowed: set):
 
 require_internal = require_roles(INTERNAL_ROLES)
 require_finance = require_roles(FINANCE_ROLES)
+
+# CRM role groups
+CRM_ROLES = {"ADMIN", "CRM_SALES", "SALES_MANAGER", "PROJECT_DIRECTOR"}
+SALES_MGMT_ROLES = {"ADMIN", "SALES_MANAGER", "PROJECT_DIRECTOR"}
+CRM_READ_ROLES = CRM_ROLES | {"COO"}
+

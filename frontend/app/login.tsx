@@ -17,18 +17,23 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth";
 import { colors, font, radii, spacing } from "@/src/lib/theme";
 
-const DEMO_ACCOUNTS = [
-  { label: "Admin", email: "admin@regalpark.com", pw: "Admin@123" },
-  { label: "Project Manager", email: "manager@regalpark.com", pw: "Manager@123" },
-  { label: "Site Engineer", email: "siteengineer@regalpark.com", pw: "Site@123" },
-  { label: "Client", email: "client@regalpark.com", pw: "Client@123" },
-];
+// Demo accounts — only visible in development builds (CRIT-6)
+const DEMO_ACCOUNTS = __DEV__
+  ? [
+      { label: "Admin", email: "admin@regalpark.com", pw: "Admin@123" },
+      { label: "COO", email: "coo@regalpark.com", pw: "Coo@123" },
+      { label: "Sales Mgr", email: "salesmgr@regalpark.com", pw: "SalesMgr@123" },
+      { label: "Project Manager", email: "manager@regalpark.com", pw: "Manager@123" },
+      { label: "Site Engineer", email: "siteengineer@regalpark.com", pw: "Site@123" },
+      { label: "Client", email: "client@regalpark.com", pw: "Client@123" },
+    ]
+  : [];
 
 export default function Login() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@regalpark.com");
-  const [password, setPassword] = useState("Admin@123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -111,22 +116,26 @@ export default function Login() {
                 )}
               </Pressable>
 
-              <Text style={styles.demoTitle}>Demo Accounts</Text>
-              <View style={styles.demoRow}>
-                {DEMO_ACCOUNTS.map((a) => (
-                  <Pressable
-                    key={a.email}
-                    testID={`demo-${a.label.replace(/\s/g, "-").toLowerCase()}`}
-                    style={styles.demoChip}
-                    onPress={() => {
-                      setEmail(a.email);
-                      setPassword(a.pw);
-                    }}
-                  >
-                    <Text style={styles.demoChipText}>{a.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              {DEMO_ACCOUNTS.length > 0 && (
+                <>
+                  <Text style={styles.demoTitle}>Dev Accounts</Text>
+                  <View style={styles.demoRow}>
+                    {DEMO_ACCOUNTS.map((a) => (
+                      <Pressable
+                        key={a.email}
+                        testID={`demo-${a.label.replace(/\s/g, "-").toLowerCase()}`}
+                        style={styles.demoChip}
+                        onPress={() => {
+                          setEmail(a.email);
+                          setPassword(a.pw);
+                        }}
+                      >
+                        <Text style={styles.demoChipText}>{a.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

@@ -6,7 +6,7 @@ All routes are namespaced under /api per the Kubernetes ingress contract.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
 from config import ALLOWED_ORIGINS, SEED_DEMO_DATA, client, db, log
@@ -25,6 +25,35 @@ from routes import (
     workflow,
 )
 from seed import migrate_base64_to_gridfs, seed_crm, seed_db, seed_plots, seed_v2
+
+# ── Rate limiting (CRIT-3) ──────────────────────────────────────────
+# Three tiers: login (5/min), write (30/min), read (120/min) per IP
+from collections import defaultdict
+import time as _time
+
+_rate_buckets: dict[str, list] = defaultdict(list)
+
+_RATE_LIMITS = {
+    "login": (5, 60),     # 5 requests per 60 seconds
+    "write": (30, 60),    # 30 requests per 60 seconds
+    "read": (120, 60),    # 120 requests per 60 seconds
+}
+
+
+def _check_rate(key: str, tier: str) -> bool:
+    """Return True if request is allowed, False if rate-limited."""
+    max_requests, window = _RATE_LIMITS[tier]
+    now = _time.time()
+    bucket_key = f"{tier}:{key}"
+    bucket = _rate_buckets[bucket_key]
+    # Evict expired entries
+    _rate_buckets[bucket_key] = [t for t in bucket if now - t < window]
+    bucket = _rate_buckets[bucket_key]
+    if len(bucket) >= max_requests:
+        return False
+    bucket.append(now)
+    return True
+
 
 app = FastAPI(title="Regal Park Villas API")
 api = APIRouter(prefix="/api")
@@ -74,6 +103,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Rate limit middleware (CRIT-3) ──────────────────────────────────
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Tiered rate limiting: login=5/min, writes=30/min, reads=120/min per IP."""
+    client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
+
+    # Determine tier
+    if path.endswith("/auth/login") and request.method == "POST":
+        tier = "login"
+    elif request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        tier = "write"
+    else:
+        tier = "read"
+
+    if not _check_rate(client_ip, tier):
+        from starlette.responses import JSONResponse
+        max_req, window = _RATE_LIMITS[tier]
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": f"Rate limit exceeded: {max_req} {tier} requests per {window}s. Try again later."
+            },
+            headers={"Retry-After": str(window)},
+        )
+
+    response: Response = await call_next(request)
+    return response
 
 
 async def _ensure_indexes():

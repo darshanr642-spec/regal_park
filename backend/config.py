@@ -27,11 +27,23 @@ if len(JWT_SECRET) < 32:
     sys.exit(1)
 
 # ── CORS allowed origins ────────────────────────────────────────────
-_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
-ALLOWED_ORIGINS: list[str] = (
-    ["*"] if _raw_origins.strip() == "*"
-    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
-)
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
+if not _raw_origins.strip():
+    ALLOWED_ORIGINS: list[str] = []
+    print(
+        "WARNING: ALLOWED_ORIGINS is empty — CORS will block all cross-origin requests. "
+        "Set ALLOWED_ORIGINS in your .env for the frontend to work.",
+        file=sys.stderr,
+    )
+elif _raw_origins.strip() == "*":
+    ALLOWED_ORIGINS = ["*"]
+    print(
+        "WARNING: ALLOWED_ORIGINS is set to '*' (wildcard). "
+        "This is acceptable for local dev but MUST be restricted in production.",
+        file=sys.stderr,
+    )
+else:
+    ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 # ── Feature flags ───────────────────────────────────────────────────
 SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
