@@ -21,6 +21,7 @@ from routes import (
     files,
     inventory,
     landowner,
+    permissions,
     plots,
     portal,
     procurement,
@@ -85,6 +86,7 @@ api.include_router(coo.router)
 api.include_router(inventory.router)
 api.include_router(landowner.router)
 api.include_router(admin.router)
+api.include_router(permissions.router)
 
 app.include_router(api)
 
@@ -237,6 +239,10 @@ async def on_startup():
     await _limiter.connect()
 
     await _ensure_indexes()
+
+    # Seed role permission matrix defaults
+    from routes.permissions import seed_default_permissions
+    await seed_default_permissions()
 
     if SEED_DEMO_DATA:
         try:

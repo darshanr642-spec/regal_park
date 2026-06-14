@@ -1,6 +1,8 @@
-"""Admin Edit Center — CRUD routes for all master data (ADMIN only).
+"""Data Editor — Role-based CRUD routes for all master data.
 
-Every mutation writes to the `admin_audit_log` collection for traceability.
+Access is controlled by the role_permissions matrix (see routes/permissions.py).
+Every mutation writes to the `admin_audit_log` collection for traceability
+and stamps `last_updated_by` + `last_updated_at` on the record.
 """
 import uuid
 from datetime import datetime, timezone
@@ -9,16 +11,15 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from auth_utils import get_current_user, hash_pw, require_roles
+from auth_utils import get_current_user, hash_pw
 from config import db
 from models import ROLES, User
+from routes.permissions import require_permission
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-ADMIN_ONLY = require_roles({"ADMIN"})
 
-
-# ── Audit helper ─────────────────────────────────────────────────────
+# ── Audit + metadata helpers ─────────────────────────────────────────
 
 async def _audit(
     user: User,
@@ -32,6 +33,7 @@ async def _audit(
         "id": str(uuid.uuid4()),
         "user_id": user.id,
         "user_name": user.full_name,
+        "user_role": user.role,
         "module": module,
         "action": action,
         "target_id": target_id,
@@ -49,16 +51,25 @@ def _diff(old: dict, new: dict, fields: list) -> dict:
     return d
 
 
+def _stamp(user: User) -> dict:
+    """Return last_updated_by/at fields to merge into $set."""
+    return {
+        "last_updated_by": user.full_name,
+        "last_updated_by_id": user.id,
+        "last_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # ── Summary ──────────────────────────────────────────────────────────
 
 @router.get("/summary")
-async def admin_summary(user: User = Depends(ADMIN_ONLY)):
+async def admin_summary(user: User = Depends(require_permission("users", "view"))):
     """Module counts for the edit center landing."""
     return {
         "users": await db.users.count_documents({}),
         "projects": await db.projects.count_documents({}),
         "plots": await db.plots.count_documents({}),
-        "boq": await db.boq.count_documents({}),
+        "boq": await db.boq.count_documents({"is_deleted": {"$ne": True}}),
         "procurement": await db.purchase_orders.count_documents({}),
         "team": await db.team.count_documents({}),
         "pricing": await db.pricing.count_documents({}),
@@ -82,23 +93,27 @@ class UserPatch(BaseModel):
 
 
 @router.get("/users")
-async def list_users(user: User = Depends(ADMIN_ONLY)):
+async def list_users(user: User = Depends(require_permission("users", "view"))):
     rows = await db.users.find({}, {"_id": 0, "hashed_password": 0}).to_list(500)
     return rows
 
 
 @router.patch("/users/{user_id}")
-async def patch_user(user_id: str, body: UserPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_user(user_id: str, body: UserPatch, user: User = Depends(require_permission("users", "edit"))):
     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "hashed_password": 0})
     if not doc:
         raise HTTPException(404, "User not found")
     updates = body.dict(exclude_none=True)
     if "role" in updates and updates["role"] not in ROLES:
         raise HTTPException(400, f"Invalid role. Must be one of: {ROLES}")
+    # Only ADMIN can change roles or deactivate
+    if ("role" in updates or "is_active" in updates) and user.role != "ADMIN":
+        raise HTTPException(403, "Only ADMIN can change roles or activate/deactivate users")
     if not updates:
         raise HTTPException(400, "No fields to update")
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    updates.update(_stamp(user))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.users.update_one({"id": user_id}, {"$set": updates})
     await _audit(user, "users", "update", user_id, changes)
     return {"ok": True, "changes": changes}
@@ -109,7 +124,8 @@ class ResetPasswordBody(BaseModel):
 
 
 @router.post("/users/{user_id}/reset-password")
-async def reset_password(user_id: str, body: ResetPasswordBody, user: User = Depends(ADMIN_ONLY)):
+async def reset_password(user_id: str, body: ResetPasswordBody, user: User = Depends(require_permission("users", "delete"))):
+    """Reset password — ADMIN only (mapped to delete permission)."""
     doc = await db.users.find_one({"id": user_id})
     if not doc:
         raise HTTPException(404, "User not found")
@@ -138,12 +154,12 @@ class ProjectPatch(BaseModel):
 
 
 @router.get("/projects")
-async def list_projects(user: User = Depends(ADMIN_ONLY)):
+async def list_projects(user: User = Depends(require_permission("projects", "view"))):
     return await db.projects.find({}, {"_id": 0}).to_list(200)
 
 
 @router.patch("/projects/{project_id}")
-async def patch_project(project_id: str, body: ProjectPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_project(project_id: str, body: ProjectPatch, user: User = Depends(require_permission("projects", "edit"))):
     doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Project not found")
@@ -151,7 +167,8 @@ async def patch_project(project_id: str, body: ProjectPatch, user: User = Depend
     if not updates:
         raise HTTPException(400, "No fields to update")
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    updates.update(_stamp(user))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.projects.update_one({"id": project_id}, {"$set": updates})
     await _audit(user, "projects", "update", project_id, changes)
     return {"ok": True, "changes": changes}
@@ -175,12 +192,12 @@ class PlotPatch(BaseModel):
 
 
 @router.get("/plots")
-async def list_plots(user: User = Depends(ADMIN_ONLY)):
+async def list_plots(user: User = Depends(require_permission("plots", "view"))):
     return await db.plots.find({}, {"_id": 0}).sort("plot_no", 1).to_list(500)
 
 
 @router.patch("/plots/{plot_no}")
-async def patch_plot(plot_no: int, body: PlotPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_plot(plot_no: int, body: PlotPatch, user: User = Depends(require_permission("plots", "edit"))):
     doc = await db.plots.find_one({"plot_no": plot_no}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Plot not found")
@@ -188,7 +205,8 @@ async def patch_plot(plot_no: int, body: PlotPatch, user: User = Depends(ADMIN_O
     if not updates:
         raise HTTPException(400, "No fields to update")
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    updates.update(_stamp(user))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.plots.update_one({"plot_no": plot_no}, {"$set": updates})
     await _audit(user, "plots", "update", str(plot_no), changes)
     return {"ok": True, "changes": changes}
@@ -199,13 +217,14 @@ class PlotBulkImport(BaseModel):
 
 
 @router.post("/plots/import")
-async def import_plots(body: PlotBulkImport, user: User = Depends(ADMIN_ONLY)):
+async def import_plots(body: PlotBulkImport, user: User = Depends(require_permission("plots", "create"))):
     """Bulk import/update plots from JSON array. Upserts by plot_no."""
     created, updated = 0, 0
     for p in body.plots:
         plot_no = p.get("plot_no")
         if plot_no is None:
             continue
+        p.update(_stamp(user))
         existing = await db.plots.find_one({"plot_no": plot_no})
         if existing:
             await db.plots.update_one({"plot_no": plot_no}, {"$set": p})
@@ -248,12 +267,12 @@ class BOQPatch(BaseModel):
 
 
 @router.get("/boq")
-async def list_boq(user: User = Depends(ADMIN_ONLY)):
-    return await db.boq.find({}, {"_id": 0}).to_list(1000)
+async def list_boq(user: User = Depends(require_permission("boq", "view"))):
+    return await db.boq.find({"is_deleted": {"$ne": True}}, {"_id": 0}).to_list(1000)
 
 
 @router.post("/boq")
-async def create_boq(body: BOQCreate, user: User = Depends(ADMIN_ONLY)):
+async def create_boq(body: BOQCreate, user: User = Depends(require_permission("boq", "create"))):
     doc = {
         "id": str(uuid.uuid4()),
         "project_id": body.project_id,
@@ -267,6 +286,8 @@ async def create_boq(body: BOQCreate, user: User = Depends(ADMIN_ONLY)):
         "approved_budget_inr": body.quantity * body.rate_inr,
         "actual_spent_inr": 0,
         "payment_status": "PENDING",
+        "is_deleted": False,
+        **_stamp(user),
     }
     await db.boq.insert_one(doc)
     await _audit(user, "boq", "create", doc["id"], {"item": body.description})
@@ -274,8 +295,8 @@ async def create_boq(body: BOQCreate, user: User = Depends(ADMIN_ONLY)):
 
 
 @router.patch("/boq/{item_id}")
-async def patch_boq(item_id: str, body: BOQPatch, user: User = Depends(ADMIN_ONLY)):
-    doc = await db.boq.find_one({"id": item_id}, {"_id": 0})
+async def patch_boq(item_id: str, body: BOQPatch, user: User = Depends(require_permission("boq", "edit"))):
+    doc = await db.boq.find_one({"id": item_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "BOQ item not found")
     updates = body.dict(exclude_none=True)
@@ -285,20 +306,22 @@ async def patch_boq(item_id: str, body: BOQPatch, user: User = Depends(ADMIN_ONL
     qty = updates.get("quantity", doc.get("quantity", 0))
     rate = updates.get("rate_inr", doc.get("rate_inr", 0))
     updates["amount_inr"] = qty * rate
+    updates.update(_stamp(user))
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.boq.update_one({"id": item_id}, {"$set": updates})
     await _audit(user, "boq", "update", item_id, changes)
     return {"ok": True, "changes": changes}
 
 
 @router.delete("/boq/{item_id}")
-async def delete_boq(item_id: str, user: User = Depends(ADMIN_ONLY)):
-    doc = await db.boq.find_one({"id": item_id}, {"_id": 0})
+async def delete_boq(item_id: str, user: User = Depends(require_permission("boq", "delete"))):
+    """Soft-delete BOQ item (ADMIN only by default matrix)."""
+    doc = await db.boq.find_one({"id": item_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "BOQ item not found")
-    await db.boq.delete_one({"id": item_id})
-    await _audit(user, "boq", "delete", item_id, {"deleted": doc.get("description", item_id)})
+    await db.boq.update_one({"id": item_id}, {"$set": {"is_deleted": True, **_stamp(user)}})
+    await _audit(user, "boq", "soft_delete", item_id, {"deleted": doc.get("description", item_id)})
     return {"ok": True}
 
 
@@ -318,25 +341,25 @@ class ProcurementPatch(BaseModel):
 
 
 @router.get("/procurement")
-async def list_procurement(user: User = Depends(ADMIN_ONLY)):
+async def list_procurement(user: User = Depends(require_permission("procurement", "view"))):
     return await db.purchase_orders.find({}, {"_id": 0}).to_list(500)
 
 
 @router.patch("/procurement/{po_id}")
-async def patch_procurement(po_id: str, body: ProcurementPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_procurement(po_id: str, body: ProcurementPatch, user: User = Depends(require_permission("procurement", "edit"))):
     doc = await db.purchase_orders.find_one({"id": po_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Purchase order not found")
     updates = body.dict(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
-    # Recalc total if qty or rate changed
     if "quantity" in updates or "rate_inr" in updates:
         qty = updates.get("quantity", doc.get("quantity", 0))
         rate = updates.get("rate_inr", doc.get("rate_inr", 0))
         updates["total_inr"] = qty * rate
+    updates.update(_stamp(user))
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.purchase_orders.update_one({"id": po_id}, {"$set": updates})
     await _audit(user, "procurement", "update", po_id, changes)
     return {"ok": True, "changes": changes}
@@ -367,16 +390,17 @@ class TeamPatch(BaseModel):
 
 
 @router.get("/team")
-async def list_team(user: User = Depends(ADMIN_ONLY)):
+async def list_team(user: User = Depends(require_permission("team", "view"))):
     return await db.team.find({}, {"_id": 0}).to_list(500)
 
 
 @router.post("/team")
-async def create_team_member(body: TeamCreate, user: User = Depends(ADMIN_ONLY)):
+async def create_team_member(body: TeamCreate, user: User = Depends(require_permission("team", "create"))):
     doc = {
         "id": str(uuid.uuid4()),
         **body.dict(),
         "status": "Active",
+        **_stamp(user),
     }
     await db.team.insert_one(doc)
     await _audit(user, "team", "create", doc["id"], {"name": body.name})
@@ -384,15 +408,16 @@ async def create_team_member(body: TeamCreate, user: User = Depends(ADMIN_ONLY))
 
 
 @router.patch("/team/{member_id}")
-async def patch_team(member_id: str, body: TeamPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_team(member_id: str, body: TeamPatch, user: User = Depends(require_permission("team", "edit"))):
     doc = await db.team.find_one({"id": member_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Team member not found")
     updates = body.dict(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    updates.update(_stamp(user))
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.team.update_one({"id": member_id}, {"$set": updates})
     await _audit(user, "team", "update", member_id, changes)
     return {"ok": True, "changes": changes}
@@ -415,20 +440,21 @@ class PricingPatch(BaseModel):
 
 
 @router.get("/pricing")
-async def list_pricing(user: User = Depends(ADMIN_ONLY)):
+async def list_pricing(user: User = Depends(require_permission("pricing", "view"))):
     return await db.pricing.find({}, {"_id": 0}).to_list(100)
 
 
 @router.patch("/pricing/{pricing_id}")
-async def patch_pricing(pricing_id: str, body: PricingPatch, user: User = Depends(ADMIN_ONLY)):
+async def patch_pricing(pricing_id: str, body: PricingPatch, user: User = Depends(require_permission("pricing", "edit"))):
     doc = await db.pricing.find_one({"id": pricing_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Pricing not found")
     updates = body.dict(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+    updates.update(_stamp(user))
 
-    changes = _diff(doc, updates, list(updates.keys()))
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.pricing.update_one({"id": pricing_id}, {"$set": updates})
     await _audit(user, "pricing", "update", pricing_id, changes)
     return {"ok": True, "changes": changes}
@@ -450,7 +476,7 @@ DEFAULT_SETTINGS = {
 
 
 @router.get("/settings")
-async def get_settings(user: User = Depends(ADMIN_ONLY)):
+async def get_settings(user: User = Depends(require_permission("settings", "view"))):
     doc = await db.app_settings.find_one({"id": "app_settings"}, {"_id": 0})
     if not doc:
         return DEFAULT_SETTINGS
@@ -458,7 +484,7 @@ async def get_settings(user: User = Depends(ADMIN_ONLY)):
 
 
 @router.patch("/settings")
-async def patch_settings(body: dict, user: User = Depends(ADMIN_ONLY)):
+async def patch_settings(body: dict, user: User = Depends(require_permission("settings", "edit"))):
     existing = await db.app_settings.find_one({"id": "app_settings"}, {"_id": 0})
     if not existing:
         existing = dict(DEFAULT_SETTINGS)
@@ -469,7 +495,8 @@ async def patch_settings(body: dict, user: User = Depends(ADMIN_ONLY)):
     if not body:
         raise HTTPException(400, "No fields to update")
 
-    changes = _diff(existing, body, list(body.keys()))
+    body.update(_stamp(user))
+    changes = _diff(existing, body, [k for k in body if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
     await db.app_settings.update_one({"id": "app_settings"}, {"$set": body})
     await _audit(user, "settings", "update", "app_settings", changes)
     return {"ok": True, "changes": changes}
@@ -480,10 +507,9 @@ async def patch_settings(body: dict, user: User = Depends(ADMIN_ONLY)):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/audit-log")
-async def get_audit_log(user: User = Depends(ADMIN_ONLY)):
+async def get_audit_log(user: User = Depends(require_permission("audit", "view"))):
     """Return last 100 audit entries, newest first."""
     rows = await db.admin_audit_log.find({}, {"_id": 0}).sort("timestamp", -1).to_list(100)
-    # Convert datetimes to ISO strings for JSON
     for r in rows:
         if "timestamp" in r and hasattr(r["timestamp"], "isoformat"):
             r["timestamp"] = r["timestamp"].isoformat()

@@ -69,9 +69,21 @@ const APPROVAL_ROLES = new Set([
 
 const ADMIN_ROLES = new Set(["ADMIN"]);
 
+/** All authenticated roles — for data editor (backend enforces per-module). */
+const ALL_ROLES = new Set([
+  "ADMIN", "COO", "PROJECT_DIRECTOR", "SALES_MANAGER", "CRM_SALES",
+  "PROJECT_MANAGER", "ARCHITECT", "STRUCTURAL_ENGINEER", "MEP_CONSULTANT",
+  "INTERIOR_DESIGNER", "LANDSCAPE_ARCHITECT", "PLANNING_ENGINEER",
+  "QUANTITY_SURVEYOR", "PROCUREMENT_MANAGER", "SITE_ENGINEER",
+  "SAFETY_OFFICER", "STORE_KEEPER", "ACCOUNTANT", "CONTRACTOR",
+  "CLIENT", "LANDOWNER",
+]);
+
 /** Route prefix → allowed roles. Order matters: first match wins. */
 const ZONE_GUARDS: Array<{ prefix: string; roles: Set<string> }> = [
-  { prefix: "/admin",      roles: ADMIN_ROLES },
+  { prefix: "/admin/permissions", roles: ADMIN_ROLES },
+  { prefix: "/admin/edit-center", roles: ALL_ROLES },
+  { prefix: "/admin",             roles: ADMIN_ROLES },
   { prefix: "/crm",        roles: CRM_ROLES },
   { prefix: "/coo",        roles: COO_ROLES },
   { prefix: "/inventory",  roles: INVENTORY_ROLES },

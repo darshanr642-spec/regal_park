@@ -339,6 +339,13 @@ export const api = {
   adminPatchSettings: (body: any) =>
     request<any>("/admin/settings", { method: "PATCH", body }),
   adminAuditLog: () => request<any[]>("/admin/audit-log"),
+
+  // ── Permissions ───────────────────────────────────────────────────
+  getMyPermissions: () => request<any>("/permissions/me"),
+  getPermissionMatrix: () => request<any>("/permissions/matrix"),
+  patchRolePermissions: (role: string, permissions: any) =>
+    request<any>(`/permissions/${role}`, { method: "PATCH", body: { permissions } }),
+  resetPermissions: () => request<any>("/permissions/reset", { method: "POST" }),
 };
 
 export async function downloadReportPdf(kind: string, projectId: string): Promise<Blob> {

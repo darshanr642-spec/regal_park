@@ -7,6 +7,7 @@ import { StatusBar } from "expo-status-bar";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/lib/auth";
 import { ProjectProvider } from "@/src/lib/project";
+import { PermissionsProvider } from "@/src/lib/permissions";
 import { BrandSplash } from "@/src/components/BrandSplash";
 import { RouteGuard } from "@/src/components/RouteGuard";
 
@@ -27,12 +28,14 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <AuthProvider>
-        <ProjectProvider>
-          <RouteGuard>
-            <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
-          </RouteGuard>
-          <BrandSplash />
-        </ProjectProvider>
+        <PermissionsProvider>
+          <ProjectProvider>
+            <RouteGuard>
+              <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+            </RouteGuard>
+            <BrandSplash />
+          </ProjectProvider>
+        </PermissionsProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
