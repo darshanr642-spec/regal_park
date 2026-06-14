@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, font, radii, shadow, spacing } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
+import { EmptyState } from "@/src/components/EmptyStatePremium";
 import { api } from "@/src/lib/api";
 
 export default function CrmVisits() {
@@ -120,7 +121,13 @@ export default function CrmVisits() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
         {loading && <Text style={styles.muted}>Loading…</Text>}
-        {!loading && visits.length === 0 && <Text style={styles.muted}>No visits scheduled</Text>}
+        {!loading && visits.length === 0 && (
+          <EmptyState
+            icon="calendar"
+            title="No site visits scheduled"
+            subtitle="Schedule site visits from the lead detail page to track customer engagement."
+          />
+        )}
         {visits.map((v) => {
           const lead = leads.find((l) => l.id === v.lead_id);
           return (

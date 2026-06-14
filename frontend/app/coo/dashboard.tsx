@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Watermark } from "@/src/components/Watermark";
+import { LogoutButton } from "@/src/components/LogoutButton";
 import { api } from "@/src/lib/api";
 
 /* ── Executive palette ────────────────────────────────────────────── */
@@ -374,6 +375,9 @@ export default function CooDashboard() {
             </View>
           </>
         )}
+
+        {/* Account */}
+        <LogoutButton dark />
       </ScrollView>
     </SafeAreaView>
   );

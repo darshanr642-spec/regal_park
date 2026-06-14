@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Watermark } from "@/src/components/Watermark";
+import { LogoutButton } from "@/src/components/LogoutButton";
 import { api } from "@/src/lib/api";
 
 /* ── Premium Portal palette ─────────────────────────────────────────── */
@@ -156,6 +157,9 @@ export default function PortalHome() {
             <Text style={styles.quickLinkSub}>{data.milestones_paid}/{data.milestones_total} paid</Text>
           </Pressable>
         </View>
+
+        {/* Account */}
+        <LogoutButton dark />
 
         {/* Footer */}
         <View style={styles.footer}>

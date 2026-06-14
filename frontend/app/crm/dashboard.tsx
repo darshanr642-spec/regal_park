@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { colors, font, radii, shadow, spacing, formatINR } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
+import { LogoutButton } from "@/src/components/LogoutButton";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 
@@ -94,6 +95,11 @@ export default function CrmDashboard() {
             <Text style={styles.funnelCount}>{stage.count}</Text>
           </View>
         ))}
+
+        {/* Account */}
+        <View style={{ marginTop: 24 }}>
+          <LogoutButton />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

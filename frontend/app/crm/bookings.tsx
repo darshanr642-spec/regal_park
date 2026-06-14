@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, font, formatINR, radii, shadow, spacing, statusColor } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
+import { EmptyState } from "@/src/components/EmptyStatePremium";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 
@@ -178,7 +179,13 @@ export default function CrmBookings() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
         {loading && <Text style={styles.muted}>Loading…</Text>}
-        {!loading && bookings.length === 0 && <Text style={styles.muted}>No bookings found</Text>}
+        {!loading && bookings.length === 0 && (
+          <EmptyState
+            icon="check-circle"
+            title="No bookings yet"
+            subtitle="Bookings will appear here once a lead converts to a booking through the CRM pipeline."
+          />
+        )}
         {bookings.map((b) => (
           <View key={b.id} style={styles.card}>
             <View style={styles.cardTop}>

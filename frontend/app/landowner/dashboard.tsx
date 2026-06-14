@@ -14,6 +14,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { Watermark } from "@/src/components/Watermark";
+import { LogoutButton } from "@/src/components/LogoutButton";
 
 /* ── Landowner palette: deep midnight + emerald + gold ────────────── */
 const L = {
@@ -381,6 +382,9 @@ export default function LandownerDashboard() {
             )}
           </>
         )}
+
+        {/* Account */}
+        <LogoutButton dark />
       </ScrollView>
 
       {/* ── Plot Detail Modal ───────────────────────────────────── */}

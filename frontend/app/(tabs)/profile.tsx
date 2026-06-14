@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth";
+import { LogoutButton } from "@/src/components/LogoutButton";
 import { Watermark } from "@/src/components/Watermark";
 import { colors, font, radii, shadow, spacing } from "@/src/lib/theme";
 
@@ -37,7 +38,7 @@ const PORTAL_MENU = [
 ];
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const initials = (user?.full_name || "RP").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
   const menu = user?.role === "CLIENT" ? MENU.filter((m) => !m.internal) : MENU;
@@ -122,10 +123,7 @@ export default function Profile() {
         )}
 
         <Text style={styles.sectionHead}>ACCOUNT</Text>
-        <Pressable testID="logout-button" style={[styles.row, styles.logout]} onPress={logout}>
-          <View style={styles.rowIcon}><Feather name="log-out" size={18} color={colors.error} /></View>
-          <Text style={[styles.rowLabel, { color: colors.error }]}>Sign out</Text>
-        </Pressable>
+        <LogoutButton />
 
         <View style={styles.footer} testID="brand-footer">
           <Text style={styles.footerBrand}>STERLITEE DEVELOPERS LLP</Text>

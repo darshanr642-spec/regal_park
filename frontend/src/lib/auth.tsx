@@ -71,12 +71,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Best-effort server-side revocation — NEVER block local logout
     try {
       const rt = await getRefreshToken();
-      if (rt) await api.logout(rt);
+      if (rt) {
+        await api.logout(rt).catch(() => {});
+      }
     } catch {
-      // Best-effort — still clear local state
+      // Swallow — local cleanup is the priority
     }
+    // Always clear local state, regardless of server response
     await setToken(null);
     await setRefreshToken(null);
     setUser(null);

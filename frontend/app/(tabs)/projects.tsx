@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { Watermark } from "@/src/components/Watermark";
+import { EmptyState } from "@/src/components/EmptyStatePremium";
 import { colors, font, formatINR, radii, shadow, spacing } from "@/src/lib/theme";
 
 export default function Projects() {
@@ -66,6 +67,13 @@ export default function Projects() {
             </View>
           </Pressable>
         )}
+        ListEmptyComponent={
+          <EmptyState
+            icon="home"
+            title="No projects yet"
+            subtitle="Construction projects will appear here once bookings are converted."
+          />
+        }
       />
     </SafeAreaView>
   );

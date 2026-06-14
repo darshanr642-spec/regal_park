@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, font, formatINR, radii, shadow, spacing } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
+import { EmptyState } from "@/src/components/EmptyStatePremium";
 import { api } from "@/src/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -126,7 +127,13 @@ export default function CrmInventory() {
       {/* Plot grid */}
       <ScrollView contentContainerStyle={styles.gridWrap}>
         {loading && <Text style={styles.muted}>Loading…</Text>}
-        {!loading && plots.length === 0 && <Text style={styles.muted}>No plots match filters</Text>}
+        {!loading && plots.length === 0 && (
+          <EmptyState
+            icon="grid"
+            title="No plots imported yet"
+            subtitle="Import your plot inventory through the admin panel to see them here."
+          />
+        )}
         <View style={styles.grid}>
           {plots.map((p) => {
             const ss = p.sales_status || p.status;

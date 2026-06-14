@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, font, radii, shadow, spacing } from "@/src/lib/theme";
 import { Watermark } from "@/src/components/Watermark";
+import { EmptyState } from "@/src/components/EmptyStatePremium";
 import { api } from "@/src/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -139,7 +140,15 @@ export default function CrmLeads() {
       {/* Lead list */}
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl }}>
         {loading && <Text style={styles.muted}>Loading…</Text>}
-        {!loading && leads.length === 0 && <Text style={styles.muted}>No leads found</Text>}
+        {!loading && leads.length === 0 && (
+          <EmptyState
+            icon="user-plus"
+            title="No leads yet"
+            subtitle="Start by adding your first walk-in, referral, or website inquiry."
+            actionLabel="Add First Lead"
+            onAction={() => setShowAdd(true)}
+          />
+        )}
         {leads.map((lead) => (
           <Pressable
             key={lead.id}

@@ -17,6 +17,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   if (loading) return null;
+
+  // ── Skip guard on unprotected paths (prevents redirect loops) ────
+  const unguarded = pathname === "/login" || pathname === "/" || pathname === "";
+  if (unguarded) return <>{children}</>;
+
+  // ── Not logged in → send to login (but only from protected pages) ─
   if (!user) return <Redirect href="/login" />;
 
   if (!isRoleAllowed(user.role, pathname)) {
