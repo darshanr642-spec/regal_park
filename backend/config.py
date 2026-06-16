@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -16,13 +17,9 @@ JWT_ALG = "HS256"
 JWT_EXP_HOURS = 1
 REFRESH_TOKEN_DAYS = 30
 
-# ── JWT secret length guard (warning only, no crash) ─────────────────
+# ── JWT secret length guard (warning only) ───────────────────────────
 if len(JWT_SECRET) < 32:
-    print(
-        f"WARNING: JWT_SECRET is only {len(JWT_SECRET)} chars (need 32+). "
-        "Using default — NOT SAFE FOR PRODUCTION.",
-        file=sys.stderr, flush=True,
-    )
+    print(f"WARNING: JWT_SECRET is only {len(JWT_SECRET)} chars.", file=sys.stderr, flush=True)
 
 # ── CORS allowed origins ────────────────────────────────────────────
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
@@ -38,9 +35,10 @@ SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
 REDIS_URL = os.environ.get("REDIS_URL", None)
 
 # ── Database client ─────────────────────────────────────────────────
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
-
-client = AsyncIOMotorClient(MONGO_URL)
+# Motor 3.x: AsyncIOMotorClient with connect=False does NOT touch the event
+# loop at construction time. It only connects when the first I/O operation
+# runs (inside uvicorn's event loop). This is safe to create at module level.
+client = AsyncIOMotorClient(MONGO_URL, connect=False)
 db = client[DB_NAME]
 fs_bucket = AsyncIOMotorGridFSBucket(db)
 
