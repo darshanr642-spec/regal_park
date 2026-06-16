@@ -235,6 +235,14 @@ async def _ensure_indexes():
 
 @app.on_event("startup")
 async def on_startup():
+    # Test MongoDB connection first
+    try:
+        result = await db.command("ping")
+        log.info("MongoDB connected OK: %s", result)
+    except Exception as e:
+        log.error("MongoDB connection FAILED: %s", e)
+        log.error("MONGO_URL starts with: %s", MONGO_URL[:40] if MONGO_URL else "NOT SET")
+
     try:
         # Initialize distributed rate limiter
         await _limiter.connect()
