@@ -52,6 +52,17 @@ SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
 # ── Redis (optional — for distributed rate limiting) ────────────────
 REDIS_URL = os.environ.get("REDIS_URL", None)  # type: Optional[str]
 
+import asyncio
+
+def _get_or_create_loop():
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+_get_or_create_loop()
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 fs_bucket = AsyncIOMotorGridFSBucket(db)
