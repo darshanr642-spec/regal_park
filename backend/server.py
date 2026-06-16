@@ -235,14 +235,23 @@ async def _ensure_indexes():
 
 @app.on_event("startup")
 async def on_startup():
-    # Initialize distributed rate limiter
-    await _limiter.connect()
+    try:
+        # Initialize distributed rate limiter
+        await _limiter.connect()
+    except Exception as e:
+        log.exception("Rate limiter connect failed (non-fatal): %s", e)
 
-    await _ensure_indexes()
+    try:
+        await _ensure_indexes()
+    except Exception as e:
+        log.exception("Index creation failed (non-fatal): %s", e)
 
-    # Seed role permission matrix defaults
-    from routes.permissions import seed_default_permissions
-    await seed_default_permissions()
+    try:
+        # Seed role permission matrix defaults
+        from routes.permissions import seed_default_permissions
+        await seed_default_permissions()
+    except Exception as e:
+        log.exception("Permission seed failed (non-fatal): %s", e)
 
     if SEED_DEMO_DATA:
         try:

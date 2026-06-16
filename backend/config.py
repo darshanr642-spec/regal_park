@@ -1,5 +1,4 @@
 """Shared configuration: env, database client, logging."""
-import asyncio
 import logging
 import os
 import sys
@@ -24,6 +23,7 @@ if len(JWT_SECRET) < 32:
         f"Current length: {len(JWT_SECRET)}. "
         "Set a strong secret in backend/.env",
         file=sys.stderr,
+        flush=True,
     )
     sys.exit(1)
 
@@ -42,47 +42,14 @@ SEED_DEMO_DATA = os.environ.get("SEED_DEMO_DATA", "false").lower() == "true"
 # ── Redis (optional — for distributed rate limiting) ────────────────
 REDIS_URL = os.environ.get("REDIS_URL", None)
 
-# ── Database (lazy init — compatible with any Python entry point) ───
+# ── Database client ─────────────────────────────────────────────────
+# Motor client is safe to create without a running loop in Motor 3.x+
+# It only needs the loop when performing actual I/O operations.
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
-_client = None
-_db = None
-_fs_bucket = None
-
-def _ensure_loop():
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-def get_client():
-    global _client
-    if _client is None:
-        _ensure_loop()
-        _client = AsyncIOMotorClient(MONGO_URL)
-    return _client
-
-def get_db():
-    global _db
-    if _db is None:
-        _db = get_client()[DB_NAME]
-    return _db
-
-def get_fs_bucket():
-    global _fs_bucket
-    if _fs_bucket is None:
-        _fs_bucket = AsyncIOMotorGridFSBucket(get_db())
-    return _fs_bucket
-
-# Backward-compatible module-level attributes via __getattr__
-def __getattr__(name):
-    if name == "client":
-        return get_client()
-    elif name == "db":
-        return get_db()
-    elif name == "fs_bucket":
-        return get_fs_bucket()
-    raise AttributeError(f"module 'config' has no attribute {name!r}")
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+fs_bucket = AsyncIOMotorGridFSBucket(db)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger("rpv")
