@@ -1,0 +1,29 @@
+# ═══════════════════════════════════════════════════════════
+#  Regal Park Villas — Render.com Blueprint
+#  Auto-deploys backend on git push
+# ═══════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: regal-park-api
+    runtime: python
+    region: singapore  # closest to India
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false  # set manually in dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates a strong secret
+      - key: DB_NAME
+        value: regal_park_villas
+      - key: ALLOWED_ORIGINS
+        sync: false  # set after Vercel deploy
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+    healthCheckPath: /api/health
+    autoDeploy: true

@@ -88,3 +88,10 @@ credentials.json
 .credentials
 .mongodb_data/
 backend/generated_pdfs/
+
+# Cloudflare tunnel binary
+cloudflared
+cloudflared.tgz
+
+# Allow .env.production to be committed (needed for Vercel)
+!frontend/.env.production
