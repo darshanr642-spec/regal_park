@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
-from config import ALLOWED_ORIGINS, REDIS_URL, SEED_DEMO_DATA, client, db, log
+from config import ALLOWED_ORIGINS, MONGO_URL, REDIS_URL, SEED_DEMO_DATA, client, db, log
 from routes import (
     admin,
     auth_routes,
