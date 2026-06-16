@@ -53,14 +53,16 @@ async def root():
 @api.get("/health")
 async def health():
     """Health check — verifies API + MongoDB connectivity. Used by Docker, K8s, and monitoring."""
+    mongo_err = None
     try:
         result = await db.command("ping")
         mongo_ok = result.get("ok") == 1.0
-    except Exception:
+    except Exception as e:
         mongo_ok = False
+        mongo_err = str(e)[:200]
 
     uptime_s = round(_time.time() - _app_start_time)
-    return {
+    resp = {
         "status": "healthy" if mongo_ok else "degraded",
         "version": _VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -69,6 +71,10 @@ async def health():
         "environment": "production" if not SEED_DEMO_DATA else "development",
         "seed_demo_data": SEED_DEMO_DATA,
     }
+    if mongo_err:
+        resp["mongo_error"] = mongo_err
+        resp["mongo_url_prefix"] = MONGO_URL[:45] + "..." if MONGO_URL else "NOT SET"
+    return resp
 
 
 api.include_router(auth_routes.router)
