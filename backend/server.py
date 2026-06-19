@@ -248,24 +248,26 @@ async def on_startup():
     except Exception as e:
         log.error("MongoDB connection FAILED: %s", e)
         log.error("MONGO_URL prefix: %s", MONGO_URL[:45] if MONGO_URL else "NOT SET")
+        # Don't block startup — API will return errors for DB-dependent routes
+        return  # Skip seeding if DB is unreachable
 
     try:
-        # Initialize distributed rate limiter
+        # Initialize distributed rate limiter (optional — no Redis in serverless)
         await _limiter.connect()
     except Exception as e:
-        log.exception("Rate limiter connect failed (non-fatal): %s", e)
+        log.info("Rate limiter connect skipped (non-fatal): %s", e)
 
     try:
         await _ensure_indexes()
     except Exception as e:
-        log.exception("Index creation failed (non-fatal): %s", e)
+        log.info("Index creation skipped (non-fatal): %s", e)
 
     try:
         # Seed role permission matrix defaults
         from routes.permissions import seed_default_permissions
         await seed_default_permissions()
     except Exception as e:
-        log.exception("Permission seed failed (non-fatal): %s", e)
+        log.info("Permission seed skipped (non-fatal): %s", e)
 
     if SEED_DEMO_DATA:
         try:
@@ -282,5 +284,12 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await _limiter.close()
-    client.close()
+    try:
+        await _limiter.close()
+    except Exception:
+        pass
+    try:
+        client.close()
+    except Exception:
+        pass
+

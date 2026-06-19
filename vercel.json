@@ -1,8 +1,17 @@
 {
-  "buildCommand": "npx expo export --platform web",
-  "outputDirectory": "dist",
+  "version": 2,
+  "buildCommand": "cd frontend && yarn install --frozen-lockfile && npx expo export --platform web",
+  "installCommand": "echo 'skip default install'",
+  "outputDirectory": "frontend/dist",
   "framework": null,
+  "functions": {
+    "api/index.py": {
+      "runtime": "@vercel/python@latest",
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
