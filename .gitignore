@@ -95,3 +95,7 @@ cloudflared.tgz
 
 # Allow .env.production to be committed (needed for Vercel)
 !frontend/.env.production
+
+# Allow .env.example files (no secrets, just templates)
+!.env.example
+!backend/.env.example
