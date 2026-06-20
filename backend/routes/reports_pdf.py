@@ -4,18 +4,23 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from reportlab.lib import colors as rl_colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    Image as RLImage,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+
+try:
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        Image as RLImage,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
 
 from auth_utils import require_internal
 from config import ROOT_DIR, db
@@ -23,10 +28,12 @@ from models import User
 
 router = APIRouter()
 
-GOLD = rl_colors.HexColor("#B8860B")
-CHARCOAL = rl_colors.HexColor("#1A1A1A")
-MUTED = rl_colors.HexColor("#7A6F5D")
-IVORY = rl_colors.HexColor("#F0EDE8")
+if HAS_REPORTLAB:
+    GOLD = rl_colors.HexColor("#B8860B")
+    CHARCOAL = rl_colors.HexColor("#1A1A1A")
+    MUTED = rl_colors.HexColor("#7A6F5D")
+    IVORY = rl_colors.HexColor("#F0EDE8")
+
 
 LOGO_PATH = ROOT_DIR / "assets" / "sterlitee_logo.png"
 
@@ -115,6 +122,8 @@ def _data_table(headers, rows, col_widths=None):
 
 @router.get("/reports/{kind}")
 async def report_pdf(kind: str, project_id: str, user: User = Depends(require_internal)):
+    if not HAS_REPORTLAB:
+        raise HTTPException(503, "PDF generation not available in serverless mode")
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
         raise HTTPException(404, "Project not found")

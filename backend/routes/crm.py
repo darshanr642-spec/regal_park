@@ -284,13 +284,16 @@ async def update_site_visit(
 
 def _generate_quotation_pdf(quote_id: str, lead: dict, plots: list, total: float, valid_until: str, generated_by: str) -> str:
     """Generate a branded PDF quotation and return the file path."""
-    import io
-    from reportlab.lib import colors as rl_colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    try:
+        import io
+        from reportlab.lib import colors as rl_colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    except ImportError:
+        return ""  # PDF generation not available in serverless mode
 
     pdf_dir = Path(__file__).parent.parent / "generated_pdfs"
     pdf_dir.mkdir(exist_ok=True)

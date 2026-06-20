@@ -1,5 +1,6 @@
 # Regal Park Villas — Backend Dependencies
 # Python 3.11+
+# NOTE: For Vercel serverless, use the root requirements.txt (slim version)
 
 # ── Web framework ────────────────────────────────────────
 fastapi>=0.110.0,<1.0
@@ -8,29 +9,19 @@ python-multipart>=0.0.6
 python-dotenv>=1.0.0
 
 # ── Database ─────────────────────────────────────────────
-motor>=3.3.0,<4.0          # async MongoDB driver
-pymongo>=4.5.0,<5.0        # sync driver (used by motor)
-dnspython>=2.4.0           # required for mongodb+srv:// URLs
+motor>=3.3.0,<4.0
+pymongo>=4.5.0,<5.0
+dnspython>=2.4.0
 
 # ── Auth ─────────────────────────────────────────────────
 bcrypt>=4.0.0
 PyJWT>=2.8.0
-python-jose[cryptography]>=3.3.0
-passlib>=1.7.4
 
 # ── Security / Rate limiting ────────────────────────────
 slowapi>=0.1.9
 limits>=3.0.0
-redis>=5.0.0               # distributed rate limiting (optional)
 
 # ── HTTP / Validation ───────────────────────────────────
 httpx>=0.25.0
 email-validator>=2.0.0
 pydantic>=2.5.0
-
-# ── PDF Reports ─────────────────────────────────────────
-reportlab>=4.0.0
-Pillow>=10.0.0
-
-# ── Utilities ────────────────────────────────────────────
-requests>=2.31.0

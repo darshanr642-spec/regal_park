@@ -1,0 +1,17 @@
+# Regal Park Villas — Vercel Serverless Dependencies (SLIM)
+# Only essential packages — no reportlab, Pillow, cryptography
+
+fastapi>=0.110.0,<1.0
+uvicorn>=0.25.0,<1.0
+python-multipart>=0.0.6
+python-dotenv>=1.0.0
+motor>=3.3.0,<4.0
+pymongo>=4.5.0,<5.0
+dnspython>=2.4.0
+bcrypt>=4.0.0
+PyJWT>=2.8.0
+slowapi>=0.1.9
+limits>=3.0.0
+httpx>=0.25.0
+email-validator>=2.0.0
+pydantic>=2.5.0
