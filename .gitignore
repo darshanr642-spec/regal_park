@@ -99,3 +99,5 @@ cloudflared.tgz
 # Allow .env.example files (no secrets, just templates)
 !.env.example
 !backend/.env.example
+mongodb-macos-*/
+mongodb.tgz
