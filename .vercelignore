@@ -3,6 +3,11 @@
 .github
 .emergent
 memory
+mongodb-macos-aarch64-8.0.10
+mongodb.tgz
+cloudflared
+cloudflared.tgz
+.mongodb_data
 test_reports
 tests
 /scripts

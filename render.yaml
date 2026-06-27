@@ -12,6 +12,6 @@ services:
       - key: SEED_DEMO_DATA
         value: "true"
       - key: ALLOWED_ORIGINS
-        value: "https://daearth.in,https://www.daearth.in,https://regal-park.vercel.app"
+        value: "https://daearth.in,https://www.daearth.in,https://regal-park.vercel.app,https://regalpark.vercel.app"
     plan: free
     region: oregon
