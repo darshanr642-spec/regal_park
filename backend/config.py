@@ -11,6 +11,13 @@ load_dotenv(ROOT_DIR / ".env")
 
 _raw_mongo = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 
+# ── Auto-migrate deleted Cluster0 → new SRP cluster ────────────────
+# The old Atlas cluster (cluster0.bsx0gqz) was deleted. This ensures the
+# correct SRP cluster URL is used regardless of stale env vars on Render.
+if "cluster0.bsx0gqz" in _raw_mongo:
+    _raw_mongo = "mongodb+srv://rpv_admin:rpv_admin@srp.q95pvjg.mongodb.net/regal_park_villas?retryWrites=true&w=majority&appName=SRP"
+    print("INFO: Auto-migrated MONGO_URL from deleted Cluster0 to SRP cluster.", flush=True)
+
 # ── Auto-fix MongoDB password URL-encoding ──────────────────────────
 # Atlas passwords with special chars (!, @, #, etc.) must be percent-encoded.
 def _fix_mongo_url(url: str) -> str:
