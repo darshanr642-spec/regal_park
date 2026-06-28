@@ -312,6 +312,14 @@ export const api = {
   adminProjects: () => request<any[]>("/admin/projects"),
   adminPatchProject: (id: string, body: any) =>
     request<any>(`/admin/projects/${id}`, { method: "PATCH", body }),
+  adminStages: (projectId?: string) =>
+    request<any[]>(`/admin/stages${projectId ? `?project_id=${projectId}` : ""}`),
+  adminCreateStage: (body: any) =>
+    request<any>("/admin/stages", { method: "POST", body }),
+  adminPatchStage: (id: string, body: any) =>
+    request<any>(`/admin/stages/${id}`, { method: "PATCH", body }),
+  adminDeleteStage: (id: string) =>
+    request<any>(`/admin/stages/${id}`, { method: "DELETE" }),
   adminPlots: () => request<any[]>("/admin/plots"),
   adminPatchPlot: (plotNo: number, body: any) =>
     request<any>(`/admin/plots/${plotNo}`, { method: "PATCH", body }),

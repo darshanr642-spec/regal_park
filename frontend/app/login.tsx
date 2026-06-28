@@ -18,18 +18,19 @@ import { useAuth } from "@/src/lib/auth";
 import { getHomeForRole } from "@/src/lib/roles";
 import { colors, font, radii, spacing } from "@/src/lib/theme";
 
-// Demo accounts — only visible in development builds (CRIT-6)
-const DEMO_ACCOUNTS = __DEV__
-  ? [
-      { label: "Admin", email: "admin@regalpark.com", pw: "Admin@123" },
-      { label: "COO", email: "coo@regalpark.com", pw: "Coo@123" },
-      { label: "Sales Mgr", email: "salesmgr@regalpark.com", pw: "SalesMgr@123" },
-      { label: "Project Manager", email: "manager@regalpark.com", pw: "Manager@123" },
-      { label: "Site Engineer", email: "siteengineer@regalpark.com", pw: "Site@123" },
-      { label: "Client", email: "client@regalpark.com", pw: "Client@123" },
-      { label: "Landowner", email: "landowner@regalpark.com", pw: "Landowner@123" },
-    ]
-  : [];
+// Quick-login accounts for all roles
+const DEMO_ACCOUNTS = [
+    { label: "Admin", email: "admin@regalpark.com", pw: "Admin@123" },
+    { label: "COO", email: "coo@regalpark.com", pw: "Coo@123" },
+    { label: "Director", email: "director@regalpark.com", pw: "Director@123" },
+    { label: "Sales Mgr", email: "salesmgr@regalpark.com", pw: "SalesMgr@123" },
+    { label: "Project Manager", email: "manager@regalpark.com", pw: "Manager@123" },
+    { label: "Site Engineer", email: "siteengineer@regalpark.com", pw: "Site@123" },
+    { label: "Procurement", email: "procurement@regalpark.com", pw: "Procure@123" },
+    { label: "Architect", email: "architect@regalpark.com", pw: "Architect@123" },
+    { label: "Client", email: "client@regalpark.com", pw: "Client@123" },
+    { label: "Landowner", email: "landowner@regalpark.com", pw: "Landowner@123" },
+  ];
 
 export default function Login() {
   const router = useRouter();
@@ -121,7 +122,7 @@ export default function Login() {
 
               {DEMO_ACCOUNTS.length > 0 && (
                 <>
-                  <Text style={styles.demoTitle}>Dev Accounts</Text>
+                  <Text style={styles.demoTitle}>Quick Login</Text>
                   <View style={styles.demoRow}>
                     {DEMO_ACCOUNTS.map((a) => (
                       <Pressable

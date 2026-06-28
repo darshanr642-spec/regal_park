@@ -23,8 +23,13 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([api.project(id), api.stages(id), api.team(id), api.boq(id)])
-      .then(([p, s, t, b]) => { setProject(p); setStages(s); setTeam(t); setBoq(b); })
+    Promise.allSettled([api.project(id), api.stages(id), api.team(id), api.boq(id).catch(() => [])])
+      .then(([p, s, t, b]) => {
+        if (p.status === "fulfilled") setProject(p.value);
+        if (s.status === "fulfilled") setStages(s.value);
+        if (t.status === "fulfilled") setTeam(t.value);
+        if (b.status === "fulfilled") setBoq(b.value);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 

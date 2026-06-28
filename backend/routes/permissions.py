@@ -24,7 +24,7 @@ ADMIN_ONLY = require_roles({"ADMIN"})
 
 # ── Module list ──────────────────────────────────────────────────────
 MODULES = [
-    "users", "projects", "plots", "boq", "procurement",
+    "users", "projects", "stages", "plots", "boq", "procurement",
     "team", "pricing", "settings", "audit", "leads",
     "bookings", "profile",
 ]
@@ -53,61 +53,61 @@ def _none():
 DEFAULT_MATRIX: Dict[str, Dict[str, Dict[str, bool]]] = {
     "ADMIN": {m: _all() for m in MODULES},
     "COO": {
-        "users": _v(), "projects": _ve(), "plots": _v(), "boq": _ve(),
+        "users": _v(), "projects": _ve(), "stages": _ve(), "plots": _v(), "boq": _ve(),
         "procurement": _ve(), "team": _ve(), "pricing": _v(),
         "settings": _none(), "audit": _v(), "leads": _v(),
         "bookings": _v(), "profile": _ve(),
     },
     "PROJECT_DIRECTOR": {
-        "users": _v(), "projects": _vec(), "plots": _v(), "boq": _vec(),
+        "users": _v(), "projects": _vec(), "stages": _vec(), "plots": _v(), "boq": _vec(),
         "procurement": _ve(), "team": _vec(), "pricing": _v(),
         "settings": _none(), "audit": _none(), "leads": _v(),
         "bookings": _v(), "profile": _ve(),
     },
     "SALES_MANAGER": {
-        "users": _v(), "projects": _v(), "plots": _ve(), "boq": _v(),
+        "users": _v(), "projects": _v(), "stages": _v(), "plots": _ve(), "boq": _v(),
         "procurement": _v(), "team": _v(), "pricing": _v(),
         "settings": _none(), "audit": _none(), "leads": _vec(),
         "bookings": _vec(), "profile": _ve(),
     },
     "CRM_SALES": {
-        "users": _none(), "projects": _none(), "plots": _v(), "boq": _none(),
+        "users": _none(), "projects": _none(), "stages": _none(), "plots": _v(), "boq": _none(),
         "procurement": _none(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _vec(),
         "bookings": _v(), "profile": _ve(),
     },
     "PROJECT_MANAGER": {
-        "users": _v(), "projects": _ve(), "plots": _v(), "boq": _vec(),
+        "users": _v(), "projects": _ve(), "stages": _vec(), "plots": _v(), "boq": _vec(),
         "procurement": _ve(), "team": _ve(), "pricing": _v(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
     },
     "SITE_ENGINEER": {
-        "users": _none(), "projects": _ve(), "plots": _none(), "boq": _v(),
+        "users": _none(), "projects": _ve(), "stages": _ve(), "plots": _none(), "boq": _v(),
         "procurement": _v(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
     },
     "PROCUREMENT_MANAGER": {
-        "users": _none(), "projects": _v(), "plots": _none(), "boq": _v(),
+        "users": _none(), "projects": _v(), "stages": _v(), "plots": _none(), "boq": _v(),
         "procurement": _vec(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
     },
     "CONTRACTOR": {
-        "users": _none(), "projects": _v(), "plots": _none(), "boq": _none(),
+        "users": _none(), "projects": _v(), "stages": _v(), "plots": _none(), "boq": _none(),
         "procurement": _none(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
     },
     "CLIENT": {
-        "users": _none(), "projects": _v(), "plots": _none(), "boq": _none(),
+        "users": _none(), "projects": _v(), "stages": _none(), "plots": _none(), "boq": _none(),
         "procurement": _none(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
     },
     "LANDOWNER": {
-        "users": _none(), "projects": _v(), "plots": _v(), "boq": _none(),
+        "users": _none(), "projects": _v(), "stages": _none(), "plots": _v(), "boq": _none(),
         "procurement": _none(), "team": _none(), "pricing": _none(),
         "settings": _none(), "audit": _none(), "leads": _none(),
         "bookings": _none(), "profile": _ve(),
@@ -118,7 +118,7 @@ DEFAULT_MATRIX: Dict[str, Dict[str, Dict[str, bool]]] = {
 for _role in ROLES:
     if _role not in DEFAULT_MATRIX:
         DEFAULT_MATRIX[_role] = {
-            "users": _none(), "projects": _v(), "plots": _none(), "boq": _none(),
+            "users": _none(), "projects": _v(), "stages": _none(), "plots": _none(), "boq": _none(),
             "procurement": _none(), "team": _none(), "pricing": _none(),
             "settings": _none(), "audit": _none(), "leads": _none(),
             "bookings": _none(), "profile": _ve(),

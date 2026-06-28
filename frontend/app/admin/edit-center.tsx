@@ -38,6 +38,7 @@ const C = {
 const ALL_TABS = [
   { key: "users", label: "Users", icon: "users", module: "users" },
   { key: "projects", label: "Projects", icon: "briefcase", module: "projects" },
+  { key: "stages", label: "Stages", icon: "layers", module: "stages" },
   { key: "plots", label: "Plots", icon: "grid", module: "plots" },
   { key: "boq", label: "BOQ", icon: "list", module: "boq" },
   { key: "procurement", label: "Procurement", icon: "truck", module: "procurement" },
@@ -141,6 +142,7 @@ export default function DataEditor() {
       {/* Tab content */}
       {tab === "users" && <UsersTab />}
       {tab === "projects" && <ProjectsTab />}
+      {tab === "stages" && <StagesTab />}
       {tab === "plots" && <PlotsTab />}
       {tab === "boq" && <BOQTab />}
       {tab === "procurement" && <ProcurementTab />}
@@ -493,6 +495,212 @@ function ProjectsTab() {
         fields={PROJECT_FIELDS} data={editing} readOnly={!canEdit}
         onSave={async (upd) => { await api.adminPatchProject(editing.id, upd); load(); }}
         onClose={() => setEditing(null)} />
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TAB: STAGES (Works)
+   ══════════════════════════════════════════════════════════════════════ */
+
+const STAGE_FIELDS: Field[] = [
+  { key: "name", label: "Stage / Work Name" },
+  { key: "planned_start", label: "Planned Start" },
+  { key: "planned_end", label: "Planned End" },
+  { key: "actual_start", label: "Actual Start" },
+  { key: "actual_end", label: "Actual End" },
+  { key: "responsible", label: "Responsible" },
+  { key: "progress_pct", label: "Progress %", type: "number" },
+  { key: "status", label: "Status (NOT_STARTED / IN_PROGRESS / DELAYED / COMPLETED)" },
+  { key: "remarks", label: "Remarks" },
+  { key: "delay_reason", label: "Delay Reason" },
+];
+
+const STAGE_CREATE_FIELDS: Field[] = [
+  { key: "name", label: "Stage / Work Name" },
+  { key: "planned_start", label: "Planned Start (YYYY-MM-DD)" },
+  { key: "planned_end", label: "Planned End (YYYY-MM-DD)" },
+  { key: "responsible", label: "Responsible Person" },
+  { key: "remarks", label: "Remarks (optional)" },
+];
+
+function StagesTab() {
+  const { can } = usePermissions();
+  const canEdit = can("stages", "edit");
+  const canCreate = can("stages", "create");
+  const canDelete = can("stages", "delete");
+  const [rows, setRows] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [filterProject, setFilterProject] = useState("");
+  const [editing, setEditing] = useState<any>(null);
+  const [creating, setCreating] = useState(false);
+  const [newForm, setNewForm] = useState<any>({});
+  const [newProjectId, setNewProjectId] = useState("");
+  const [createMsg, setCreateMsg] = useState("");
+  const [createSaving, setCreateSaving] = useState(false);
+
+  const load = useCallback(() => {
+    api.adminStages().then(setRows).catch(() => {});
+    api.adminProjects().then(setProjects).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const projectMap = Object.fromEntries(projects.map((p: any) => [p.id, p.name]));
+
+  const filtered = rows.filter((r) => {
+    const matchSearch =
+      r.name?.toLowerCase().includes(search.toLowerCase()) ||
+      r.responsible?.toLowerCase().includes(search.toLowerCase()) ||
+      r.status?.toLowerCase().includes(search.toLowerCase()) ||
+      projectMap[r.project_id]?.toLowerCase().includes(search.toLowerCase());
+    const matchProject = !filterProject || r.project_id === filterProject;
+    return matchSearch && matchProject;
+  });
+
+  const SSC: Record<string, string> = {
+    NOT_STARTED: C.muted, IN_PROGRESS: C.blue, DELAYED: C.red, COMPLETED: C.green,
+  };
+
+  const handleDelete = (item: any) => {
+    confirmAction("Delete Stage", `Delete "${item.name}"? This can\'t be undone.`, async () => {
+      try { await api.adminDeleteStage(item.id); load(); }
+      catch (e: any) { Alert.alert("Error", e.message); }
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!newProjectId) { setCreateMsg("Select a project"); return; }
+    if (!newForm.name?.trim()) { setCreateMsg("Stage name is required"); return; }
+    if (!newForm.planned_start?.trim()) { setCreateMsg("Planned start is required"); return; }
+    if (!newForm.planned_end?.trim()) { setCreateMsg("Planned end is required"); return; }
+    if (!newForm.responsible?.trim()) { setCreateMsg("Responsible person is required"); return; }
+    setCreateSaving(true);
+    setCreateMsg("");
+    try {
+      await api.adminCreateStage({ ...newForm, project_id: newProjectId });
+      setCreateMsg("✅ Created");
+      setTimeout(() => { setCreating(false); setNewForm({}); setNewProjectId(""); setCreateMsg(""); load(); }, 600);
+    } catch (e: any) { setCreateMsg("❌ " + (e.message || "Create failed")); }
+    setCreateSaving(false);
+  };
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={s.content}>
+        <SearchBar value={search} onChange={setSearch} />
+
+        {/* Project filter */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, maxHeight: 36 }}>
+          <Pressable
+            style={[s.tab, !filterProject && s.tabActive, { marginRight: 6 }]}
+            onPress={() => setFilterProject("")}
+          >
+            <Text style={[s.tabTxt, !filterProject && s.tabTxtActive]}>All Projects</Text>
+          </Pressable>
+          {projects.map((p: any) => (
+            <Pressable
+              key={p.id}
+              style={[s.tab, filterProject === p.id && s.tabActive, { marginRight: 6 }]}
+              onPress={() => setFilterProject(filterProject === p.id ? "" : p.id)}
+            >
+              <Text style={[s.tabTxt, filterProject === p.id && s.tabTxtActive]} numberOfLines={1}>
+                {p.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <Text style={s.countTxt}>{filtered.length} stages / works</Text>
+
+        {canCreate && (
+          <Pressable style={[s.actionBtn, { marginBottom: 12 }]} onPress={() => setCreating(true)}>
+            <Feather name="plus" size={14} color={C.bg} />
+            <Text style={s.actionBtnTxt}>Add Work / Stage</Text>
+          </Pressable>
+        )}
+
+        {filtered.map((st) => (
+          <View key={st.id} style={s.cardWithActions}>
+            <CardRow
+              title={st.name}
+              subtitle={`${projectMap[st.project_id] || st.project_id} · ${st.responsible} · ${st.planned_start} → ${st.planned_end}`}
+              right={`${Math.round(st.progress_pct || 0)}% · ${st.status?.replace("_", " ")}`}
+              accent={SSC[st.status] || C.muted}
+              onPress={() => setEditing(st)}
+              canEdit={canEdit}
+            />
+            {canDelete && (
+              <Pressable style={s.deleteBtn} onPress={() => handleDelete(st)}>
+                <Feather name="trash-2" size={12} color={C.red} />
+              </Pressable>
+            )}
+          </View>
+        ))}
+        {filtered.length === 0 && <Text style={s.emptyTxt}>No stages / works found</Text>}
+      </ScrollView>
+
+      <EditModal
+        visible={!!editing}
+        title={canEdit ? "Edit Stage" : "View Stage"}
+        fields={STAGE_FIELDS}
+        data={editing}
+        readOnly={!canEdit}
+        onSave={async (upd) => { await api.adminPatchStage(editing.id, upd); load(); }}
+        onClose={() => setEditing(null)}
+      />
+
+      {/* Create modal */}
+      <Modal visible={creating} transparent animationType="fade">
+        <View style={ms.overlay}>
+          <View style={ms.modal}>
+            <View style={ms.mHeader}>
+              <Text style={ms.mTitle}>Add Work / Stage</Text>
+              <Pressable onPress={() => { setCreating(false); setCreateMsg(""); }}>
+                <Feather name="x" size={20} color={C.muted} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {/* Project selector */}
+              <View style={ms.field}>
+                <Text style={ms.label}>PROJECT</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {projects.map((p: any) => (
+                    <Pressable
+                      key={p.id}
+                      style={[s.tab, newProjectId === p.id && s.tabActive, { marginRight: 6 }]}
+                      onPress={() => setNewProjectId(p.id)}
+                    >
+                      <Text style={[s.tabTxt, newProjectId === p.id && s.tabTxtActive]}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+              {STAGE_CREATE_FIELDS.map((f) => (
+                <View key={f.key} style={ms.field}>
+                  <Text style={ms.label}>{f.label}</Text>
+                  <TextInput
+                    style={ms.input}
+                    value={String(newForm[f.key] ?? "")}
+                    onChangeText={(v) => setNewForm({ ...newForm, [f.key]: v })}
+                    placeholderTextColor={C.muted}
+                    placeholder={f.label}
+                  />
+                </View>
+              ))}
+            </ScrollView>
+            {createMsg ? <Text style={ms.msg}>{createMsg}</Text> : null}
+            <View style={ms.mFooter}>
+              <Pressable style={ms.cancelBtn} onPress={() => { setCreating(false); setCreateMsg(""); }}>
+                <Text style={ms.cancelTxt}>Cancel</Text>
+              </Pressable>
+              <Pressable style={ms.saveBtn} onPress={handleCreate} disabled={createSaving}>
+                <Text style={ms.saveTxt}>{createSaving ? "Creating…" : "Create"}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }

@@ -68,6 +68,7 @@ async def admin_summary(user: User = Depends(require_permission("users", "view")
     return {
         "users": await db.users.count_documents({}),
         "projects": await db.projects.count_documents({}),
+        "stages": await db.stages.count_documents({"is_deleted": {"$ne": True}}),
         "plots": await db.plots.count_documents({}),
         "boq": await db.boq.count_documents({"is_deleted": {"$ne": True}}),
         "procurement": await db.purchase_orders.count_documents({}),
@@ -172,6 +173,111 @@ async def patch_project(project_id: str, body: ProjectPatch, user: User = Depend
     await db.projects.update_one({"id": project_id}, {"$set": updates})
     await _audit(user, "projects", "update", project_id, changes)
     return {"ok": True, "changes": changes}
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  2b. STAGES (Works)
+# ══════════════════════════════════════════════════════════════════════
+
+STAGE_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "DELAYED", "COMPLETED"]
+
+
+class StageCreate(BaseModel):
+    project_id: str
+    name: str
+    planned_start: str
+    planned_end: str
+    responsible: str
+    remarks: Optional[str] = None
+
+
+class StagePatch(BaseModel):
+    name: Optional[str] = None
+    planned_start: Optional[str] = None
+    planned_end: Optional[str] = None
+    actual_start: Optional[str] = None
+    actual_end: Optional[str] = None
+    responsible: Optional[str] = None
+    progress_pct: Optional[float] = None
+    status: Optional[str] = None
+    remarks: Optional[str] = None
+    delay_reason: Optional[str] = None
+
+
+@router.get("/stages")
+async def list_stages(
+    project_id: Optional[str] = None,
+    user: User = Depends(require_permission("stages", "view")),
+):
+    q: dict = {"is_deleted": {"$ne": True}}
+    if project_id:
+        q["project_id"] = project_id
+    rows = await db.stages.find(q, {"_id": 0}).sort([("project_id", 1), ("order", 1)]).to_list(1000)
+    return rows
+
+
+@router.post("/stages")
+async def create_stage(body: StageCreate, user: User = Depends(require_permission("stages", "create"))):
+    # Verify project exists
+    proj = await db.projects.find_one({"id": body.project_id}, {"_id": 0, "id": 1})
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    # Determine next order number
+    last = await db.stages.find(
+        {"project_id": body.project_id, "is_deleted": {"$ne": True}},
+        {"_id": 0, "order": 1},
+    ).sort("order", -1).to_list(1)
+    next_order = (last[0]["order"] + 1) if last else 1
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "project_id": body.project_id,
+        "order": next_order,
+        "name": body.name,
+        "planned_start": body.planned_start,
+        "planned_end": body.planned_end,
+        "actual_start": None,
+        "actual_end": None,
+        "responsible": body.responsible,
+        "progress_pct": 0.0,
+        "status": "NOT_STARTED",
+        "remarks": body.remarks or "Scheduled",
+        "delay_reason": None,
+        "is_deleted": False,
+        **_stamp(user),
+    }
+    await db.stages.insert_one(doc)
+    await _audit(user, "stages", "create", doc["id"], {"name": body.name, "project_id": body.project_id})
+    return {"ok": True, "id": doc["id"]}
+
+
+@router.patch("/stages/{stage_id}")
+async def admin_patch_stage(stage_id: str, body: StagePatch, user: User = Depends(require_permission("stages", "edit"))):
+    doc = await db.stages.find_one({"id": stage_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Stage not found")
+    updates = body.dict(exclude_none=True)
+    if "status" in updates and updates["status"] not in STAGE_STATUSES:
+        raise HTTPException(400, f"Invalid status. Must be one of: {STAGE_STATUSES}")
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    updates.update(_stamp(user))
+
+    changes = _diff(doc, updates, [k for k in updates if k not in ("last_updated_by", "last_updated_by_id", "last_updated_at")])
+    await db.stages.update_one({"id": stage_id}, {"$set": updates})
+    await _audit(user, "stages", "update", stage_id, changes)
+    return {"ok": True, "changes": changes}
+
+
+@router.delete("/stages/{stage_id}")
+async def delete_stage(stage_id: str, user: User = Depends(require_permission("stages", "delete"))):
+    """Soft-delete a stage/work item."""
+    doc = await db.stages.find_one({"id": stage_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Stage not found")
+    await db.stages.update_one({"id": stage_id}, {"$set": {"is_deleted": True, **_stamp(user)}})
+    await _audit(user, "stages", "soft_delete", stage_id, {"deleted": doc.get("name", stage_id)})
+    return {"ok": True}
 
 
 # ══════════════════════════════════════════════════════════════════════

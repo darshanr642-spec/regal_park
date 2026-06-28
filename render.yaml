@@ -6,7 +6,7 @@ services:
     startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MONGO_URL
-        value: mongodb+srv://rpv_admin:rpv_admin@cluster0.bsx0gqz.mongodb.net/regal_park_villas?retryWrites=true&w=majority&appName=Cluster0
+        value: mongodb+srv://rpv_admin:rpv_admin@srp.q95pvjg.mongodb.net/regal_park_villas?retryWrites=true&w=majority&appName=SRP
       - key: JWT_SECRET
         value: rpv-super-secret-jwt-key-2025
       - key: SEED_DEMO_DATA
