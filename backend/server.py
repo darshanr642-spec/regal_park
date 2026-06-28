@@ -239,8 +239,37 @@ async def _ensure_indexes():
         log.exception("Index creation failed: %s", e)
 
 
+async def _background_seed():
+    """Run indexes and seeding in background so server binds to port immediately."""
+    try:
+        await _ensure_indexes()
+    except Exception as e:
+        log.info("Index creation skipped (non-fatal): %s", e)
+
+    try:
+        from routes.permissions import seed_default_permissions
+        await seed_default_permissions()
+    except Exception as e:
+        log.info("Permission seed skipped (non-fatal): %s", e)
+
+    if SEED_DEMO_DATA:
+        try:
+            await seed_db()
+            await seed_v2()
+            await seed_plots()
+            await seed_crm()
+            await migrate_base64_to_gridfs()
+            log.info("Background seeding completed successfully.")
+        except Exception as e:
+            log.exception("Background seed/migration failed: %s", e)
+    else:
+        log.info("SEED_DEMO_DATA is false — skipping demo seed.")
+
+
 @app.on_event("startup")
 async def on_startup():
+    import asyncio
+
     # Test MongoDB connection (this triggers lazy Motor client creation
     # inside uvicorn's event loop — fixing the "different loop" error)
     try:
@@ -258,29 +287,9 @@ async def on_startup():
     except Exception as e:
         log.info("Rate limiter connect skipped (non-fatal): %s", e)
 
-    try:
-        await _ensure_indexes()
-    except Exception as e:
-        log.info("Index creation skipped (non-fatal): %s", e)
-
-    try:
-        # Seed role permission matrix defaults
-        from routes.permissions import seed_default_permissions
-        await seed_default_permissions()
-    except Exception as e:
-        log.info("Permission seed skipped (non-fatal): %s", e)
-
-    if SEED_DEMO_DATA:
-        try:
-            await seed_db()
-            await seed_v2()
-            await seed_plots()
-            await seed_crm()
-            await migrate_base64_to_gridfs()
-        except Exception as e:
-            log.exception("Startup seed/migration failed: %s", e)
-    else:
-        log.info("SEED_DEMO_DATA is false — skipping demo seed.")
+    # Run indexes + seeding in background so the server binds to the port
+    # immediately (Render free tier has a ~15 min port scan timeout).
+    asyncio.create_task(_background_seed())
 
 
 @app.on_event("shutdown")
