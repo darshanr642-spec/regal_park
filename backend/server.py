@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
-from config import ALLOWED_ORIGINS, MONGO_URL, REDIS_URL, SEED_DEMO_DATA, client, db, log
+from config import ALLOWED_ORIGINS, MONGO_URL, REDIS_URL, SEED_DEMO_DATA, db, log
 from routes import (
     admin,
     auth_routes,
@@ -241,7 +241,8 @@ async def _ensure_indexes():
 
 @app.on_event("startup")
 async def on_startup():
-    # Test MongoDB connection
+    # Test MongoDB connection (this triggers lazy Motor client creation
+    # inside uvicorn's event loop — fixing the "different loop" error)
     try:
         result = await db.command("ping")
         log.info("MongoDB connected OK: %s", result)
@@ -289,7 +290,10 @@ async def on_shutdown():
     except Exception:
         pass
     try:
-        client.close()
+        from config import _get_client
+        c = _get_client()
+        if c:
+            c.close()
     except Exception:
         pass
 
